@@ -256,6 +256,7 @@ struct _PSMove {
 
     /* The handle to the HIDAPI device */
     hid_device *handle;
+    hid_device *handle_addr;
 
     /* The handle to the moved client */
     moved_client *client;
@@ -273,6 +274,7 @@ struct _PSMove {
 
     /* Device path of the controller */
     char *device_path;
+    char *device_path_addr;
 
     /* Nonzero if the value of the LEDs or rumble has changed */
     unsigned char leds_dirty;
@@ -506,12 +508,9 @@ psmove_count_connected_hidapi()
 #ifdef _WIN32
         /**
          * Windows Quirk: Ignore extraneous devices (each dev is enumerated
-         * 3 times, count only the one with "&col02#" in the path)
-         *
-         * We use col02 for enumeration, and col01 for connecting. We want to
-         * have col02 here, because after connecting to col01, it disappears.
+         * 3 times, count only the one with "&col01#" in the path -> the first one)
          **/
-        if (strstr(cur_dev->path, "&col02#") == NULL) {
+        if (strstr(cur_dev->path, "&col01#") == NULL) {
             count--;
         }
 #endif
@@ -561,24 +560,39 @@ psmove_connect_internal(wchar_t *serial, char *path, int id)
 #ifdef _WIN32
     /* Windows Quirk: USB devices have "0" as serial, BT devices their addr */
     if (serial != NULL && wcslen(serial) > 1) {
-        move->is_bluetooth = 1;
+        move->is_bluetooth = 1; // Is this used anywhere else?
     }
-    /* Windows Quirk: Use path instead of serial number by ignoring serial */
-    serial = NULL;
-
-    /* XXX Ugly: Convert "col02" path to "col01" path (tested w/ BT and USB) */
+    serial = NULL;  // Set the serial to NULL to be sure we get the serial from a function below.
+    /*
+    This function is only called with the path containing col01.
+    We first copy that path then change to col02. That will be the path for our addr device.
+    Connect to the addr device, then connect to the main device.
+    */
+    move->device_path_addr = strdup(path);
     char *p;
-    psmove_return_val_if_fail((p = strstr(path, "&col02#")) != NULL, NULL);
-    p[5] = '1';
-    psmove_return_val_if_fail((p = strstr(path, "&0001#")) != NULL, NULL);
-    p[4] = '0';
-#endif
+    psmove_return_val_if_fail((p = strstr(move->device_path_addr, "&col01#")) != NULL, NULL);
+    p[5] = '2';
+    psmove_return_val_if_fail((p = strstr(move->device_path_addr, "&0000#")) != NULL, NULL);
+    p[4] = '1';
+    move->handle_addr = hid_open_path(move->device_path_addr);
+    hid_set_nonblocking(move->handle_addr, 1);
 
+    move->device_path = strdup(path);
+    move->handle = hid_open_path(move->device_path);
+
+#else
+
+    if (path != NULL) {
+        move->device_path = strdup(path);
+    }
     if (serial == NULL && path != NULL) {
         move->handle = hid_open_path(path);
-    } else {
+    }
+    else {
         move->handle = hid_open(PSMOVE_VID, PSMOVE_PID, serial);
     }
+
+#endif
 
     if (!move->handle) {
         free(move);
@@ -599,10 +613,10 @@ psmove_connect_internal(wchar_t *serial, char *path, int id)
     if (serial != NULL) {
         wcstombs(move->serial_number, serial, PSMOVE_MAX_SERIAL_LENGTH);
     }
-
-    if (path != NULL) {
-        move->device_path = strdup(path);
+    else {
+        move->serial_number = psmove_get_serial(move);
     }
+
 
     /**
      * Normalize "aa-bb-cc-dd-ee-ff" (OS X format) into "aa:bb:cc:dd:ee:ff"
@@ -634,6 +648,7 @@ psmove_connect_internal(wchar_t *serial, char *path, int id)
     /* Bookkeeping of open handles (for psmove_reinit) */
     psmove_num_open_handles++;
 
+    /* CBB: Do these work in Win 8.1? */
     move->calibration = psmove_calibration_new(move);
     move->orientation = psmove_orientation_new(move);
 
@@ -680,6 +695,7 @@ _psmove_get_auth_response(PSMove *move)
 
     memset(buf, 0, sizeof(buf));
     buf[0] = PSMove_Req_GetAuthResponse;
+    //Maybe Windows 8.1 this is on a separate device handle (col03)
     res = hid_get_feature_report(move->handle, buf, sizeof(buf));
 
     psmove_return_val_if_fail(res == sizeof(buf), NULL);
@@ -837,7 +853,7 @@ psmove_connect_by_id(int id)
     cur_dev = devs;
     while (cur_dev) {
 #ifdef _WIN32
-        if (strstr(cur_dev->path, "&col02#") != NULL) {
+        if (strstr(cur_dev->path, "&col01#") != NULL) {
 #endif
             if (count == id) {
                 move = psmove_connect_internal(cur_dev->serial_number,
@@ -881,8 +897,13 @@ _psmove_read_btaddrs(PSMove *move, PSMove_Data_BTAddr *host, PSMove_Data_BTAddr 
     /* Get Bluetooth address */
     memset(btg, 0, sizeof(btg));
     btg[0] = PSMove_Req_GetBTAddr;
-    res = hid_get_feature_report(move->handle, btg, sizeof(btg));
-
+    if (move->handle_addr){ //_WIN32 only.
+        res = hid_get_feature_report(move->handle_addr, btg, sizeof(btg));
+    }
+    else{
+        res = hid_get_feature_report(move->handle, btg, sizeof(btg));
+    }
+    
     if (res == sizeof(btg)) {
         if (controller != NULL) {
             memcpy(*controller, btg+1, 6);
@@ -994,8 +1015,12 @@ psmove_set_btaddr(PSMove *move, PSMove_Data_BTAddr *addr)
     for (i=0; i<6; i++) {
         bts[1+i] = (*addr)[i];
     }
-
-    res = hid_send_feature_report(move->handle, bts, sizeof(bts));
+    if (move->handle_addr){
+        res = hid_send_feature_report(move->handle_addr, bts, sizeof(bts));
+    }
+    else{
+        res = hid_send_feature_report(move->handle, bts, sizeof(bts));
+    }
 
     return (res == sizeof(bts));
 }
@@ -1996,6 +2021,8 @@ psmove_disconnect(PSMove *move)
     switch (move->type) {
         case PSMove_HIDAPI:
             hid_close(move->handle);
+            if (move->handle_addr)
+                hid_close(move->handle_addr);
             break;
         case PSMove_MOVED:
             // XXX: Close connection?
@@ -2012,6 +2039,8 @@ psmove_disconnect(PSMove *move)
 
     free(move->serial_number);
     free(move->device_path);
+    if (move->device_path_addr)
+        free(move->device_path_addr);
     free(move);
 
     /* Bookkeeping of open handles (for psmove_reinit) */
