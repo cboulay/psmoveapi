@@ -256,7 +256,7 @@ struct _PSMove {
 
     /* The handle to the HIDAPI device */
     hid_device *handle;
-    hid_device *handle_addr;
+    hid_device *handle_addr; // Only used by _WIN32. Needed by Win 8.1 to get BT address.
 
     /* The handle to the moved client */
     moved_client *client;
@@ -274,7 +274,7 @@ struct _PSMove {
 
     /* Device path of the controller */
     char *device_path;
-    char *device_path_addr;
+    char *device_path_addr;  // Only used by _WIN32. Needed by Win 8.1 to get BT address.
 
     /* Nonzero if the value of the LEDs or rumble has changed */
     unsigned char leds_dirty;
@@ -507,8 +507,9 @@ psmove_count_connected_hidapi()
     while (cur_dev) {
 #ifdef _WIN32
         /**
-         * Windows Quirk: Ignore extraneous devices (each dev is enumerated
-         * 3 times, count only the one with "&col01#" in the path -> the first one)
+         * Windows Quirk: Each dev is enumerated 3 times.
+         * The one with "&col01#" in the path is the one we will get most of our data from. Only count this one.
+         * The one with "&col02#" in the path is the one we will get the bluetooth address from.
          **/
         if (strstr(cur_dev->path, "&col01#") == NULL) {
             count--;
@@ -562,11 +563,20 @@ psmove_connect_internal(wchar_t *serial, char *path, int id)
     if (serial != NULL && wcslen(serial) > 1) {
         move->is_bluetooth = 1; // Is this used anywhere else?
     }
-    serial = NULL;  // Set the serial to NULL to be sure we get the serial from a function below.
+    serial = NULL;  // Set the serial to NULL, even if BT device, to use psmove_get_serial below.
+
     /*
-    This function is only called with the path containing col01.
-    We first copy that path then change to col02. That will be the path for our addr device.
-    Connect to the addr device, then connect to the main device.
+     In Windows, the device is enumerated 3 times, and each has slightly different behaviour.
+     The devices' paths differ slightly (col01, col02, and col03).
+     The device with col01 is the one we want to use for data.
+     The device with col02 is the one we want to use for the bluetooth address.
+     More testing remains to determine which device is best for which feature reports.
+    */
+
+    /*
+     We know this function (psmove_connect_internal) will only be called with the col01 path.
+     We first copy that path then modify it to col02. That will be the path for our addr device.
+     Connect to the addr device first, then connect to the main device.
     */
     move->device_path_addr = strdup(path);
     char *p;
@@ -581,7 +591,7 @@ psmove_connect_internal(wchar_t *serial, char *path, int id)
     move->handle = hid_open_path(move->device_path);
 
 #else
-
+    // If not in Windows then we can rely on having only one device.
     if (path != NULL) {
         move->device_path = strdup(path);
     }
@@ -648,7 +658,6 @@ psmove_connect_internal(wchar_t *serial, char *path, int id)
     /* Bookkeeping of open handles (for psmove_reinit) */
     psmove_num_open_handles++;
 
-    /* CBB: Do these work in Win 8.1? */
     move->calibration = psmove_calibration_new(move);
     move->orientation = psmove_orientation_new(move);
 
@@ -695,7 +704,6 @@ _psmove_get_auth_response(PSMove *move)
 
     memset(buf, 0, sizeof(buf));
     buf[0] = PSMove_Req_GetAuthResponse;
-    //Maybe Windows 8.1 this is on a separate device handle (col03)
     res = hid_get_feature_report(move->handle, buf, sizeof(buf));
 
     psmove_return_val_if_fail(res == sizeof(buf), NULL);
@@ -1015,7 +1023,7 @@ psmove_set_btaddr(PSMove *move, PSMove_Data_BTAddr *addr)
     for (i=0; i<6; i++) {
         bts[1+i] = (*addr)[i];
     }
-    if (move->handle_addr){
+    if (move->handle_addr){ // _WIN32 only.
         res = hid_send_feature_report(move->handle_addr, bts, sizeof(bts));
     }
     else{
@@ -2021,8 +2029,9 @@ psmove_disconnect(PSMove *move)
     switch (move->type) {
         case PSMove_HIDAPI:
             hid_close(move->handle);
-            if (move->handle_addr)
+            if (move->handle_addr){// _WIN32 only
                 hid_close(move->handle_addr);
+            }
             break;
         case PSMove_MOVED:
             // XXX: Close connection?
@@ -2039,8 +2048,9 @@ psmove_disconnect(PSMove *move)
 
     free(move->serial_number);
     free(move->device_path);
-    if (move->device_path_addr)
+    if (move->device_path_addr){ // _WIN32 only
         free(move->device_path_addr);
+    }
     free(move);
 
     /* Bookkeeping of open handles (for psmove_reinit) */
