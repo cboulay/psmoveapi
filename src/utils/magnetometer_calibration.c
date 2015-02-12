@@ -31,7 +31,7 @@
 
 #include "psmove.h"
 
-#define MINIMUM_REQUIRED_RANGE 320
+#define MINIMUM_REQUIRED_RANGE 260 //CBB: Original 320 did not work well for me. Seems room-dependent.
 
 int
 main(int arg, char** args)
