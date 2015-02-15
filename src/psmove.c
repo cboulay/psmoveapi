@@ -561,23 +561,23 @@ psmove_connect_internal(wchar_t *serial, char *path, int id)
 #ifdef _WIN32
     /* Windows Quirk: USB devices have "0" as serial, BT devices their addr */
     if (serial != NULL && wcslen(serial) > 1) {
-        move->is_bluetooth = 1; // Is this used anywhere else?
+        move->is_bluetooth = 1;
     }
     serial = NULL;  // Set the serial to NULL, even if BT device, to use psmove_get_serial below.
 
-    /*
+    /**
      In Windows, the device is enumerated 3 times, and each has slightly different behaviour.
      The devices' paths differ slightly (col01, col02, and col03).
      The device with col01 is the one we want to use for data.
      The device with col02 is the one we want to use for the bluetooth address.
      More testing remains to determine which device is best for which feature reports.
-    */
+     **/
 
-    /*
+    /**
      We know this function (psmove_connect_internal) will only be called with the col01 path.
      We first copy that path then modify it to col02. That will be the path for our addr device.
      Connect to the addr device first, then connect to the main device.
-    */
+     **/
     move->device_path_addr = strdup(path);
     char *p;
     psmove_return_val_if_fail((p = strstr(move->device_path_addr, "&col01#")) != NULL, NULL);
