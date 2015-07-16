@@ -536,6 +536,35 @@ ADDAPI void
 ADDCALL psmove_tracker_reset_location(PSMoveTracker *tracker, PSMove *move);
 
 /**
+* \brief Get the current 3D location of a tracked controller
+*
+* This function obtains the location of a controller in the
+* world in cm.
+*
+* \param tracker A valid \ref PSMoveTracker handle
+* \param move A valid \ref PSMove handle
+* \param xcm A pointer to store the X part of the location, or \c NULL
+* \param ycm A pointer to store the Y part of the location, or \c NULL
+* \param zcm A pointer to store the Z part of the location, or \c NULL
+*
+* \return The age of the sensor reading in milliseconds, or -1 on error
+**/
+ADDAPI int
+ADDCALL psmove_tracker_get_location(PSMoveTracker *tracker,
+PSMove *move, float *xcm, float *ycm, float *zcm);
+
+
+/**
+* \brief Rest the location offsets to the current location
+*
+* \param tracker A valid \ref PSMoveTracker handle
+* \param move A valid \ref PSMove handle
+*
+**/
+ADDAPI void
+ADDCALL psmove_tracker_reset_location(PSMoveTracker *tracker, PSMove *move);
+
+/**
  * \brief Get the camera image size for the tracker
  *
  * This function can be used to obtain the real camera image size used

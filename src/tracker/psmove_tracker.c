@@ -758,8 +758,8 @@ psmove_tracker_enable(PSMoveTracker *tracker, PSMove *move)
     };
 
     // Re-order the sphere colours by hue-distance to non-illuminated image.
-    int colorOrder[] = { 1, 4, 0, 2, 3 };
-    /*
+    int colorOrder[] = { 0, 1, 2, 3, 4 };
+    /*  Though this does what is intended, it is not always the best result.
     int colorOrder[N_PRESET_COLORS];
     psmove_tracker_update_image(tracker);
     IplImage* frame = tracker->frame;
@@ -868,7 +868,7 @@ psmove_tracker_old_color_is_tracked(PSMoveTracker* tracker, PSMove* move, struct
         psmove_update_leds(move);
         usleep(1000 * 10); // wait 10ms - ok, since we're not blinking
         psmove_tracker_update_image(tracker);
-        psmove_tracker_update(tracker, move);
+        psmove_tracker_update_cbb(tracker, move);
 
         if (tc->is_tracked) {
             // TODO: Verify quality criteria to avoid bogus tracking
@@ -1204,6 +1204,10 @@ psmove_tracker_enable_with_color_internal(PSMoveTracker *tracker, PSMove *move,
             tc->eColorHSV = tc->eFColorHSV = hsv_color;
             psmove_DEBUG("Stored color: h %f, s %f, v %f\n",
                 tc->eColorHSV.val[0], tc->eColorHSV.val[1], tc->eColorHSV.val[2]);
+
+            tc->x_off = XORIGIN_CM;
+            tc->y_off = YORIGIN_CM;
+            tc->z_off = ZORIGIN_CM;
 
             tc->x_off = XORIGIN_CM;
             tc->y_off = YORIGIN_CM;
