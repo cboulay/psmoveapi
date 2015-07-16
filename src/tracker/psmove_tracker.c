@@ -993,7 +993,7 @@ psmove_tracker_blinking_calibration(PSMoveTracker *tracker, PSMove *move,
 
     // DEBUG log the assigned color
     psmove_html_trace_put_color_var("assignedColor", cvScalar(rgb.b, rgb.g, rgb.r, 0));
-
+v
     float dimming = 1.0;
     
     // If previously set, use that
@@ -1202,6 +1202,10 @@ psmove_tracker_enable_with_color_internal(PSMoveTracker *tracker, PSMove *move,
             tc->eColorHSV = tc->eFColorHSV = hsv_color;
             psmove_DEBUG("Stored color: h %f, s %f, v %f\n",
                 tc->eColorHSV.val[0], tc->eColorHSV.val[1], tc->eColorHSV.val[2]);
+
+            tc->x_off = XORIGIN_CM;
+            tc->y_off = YORIGIN_CM;
+            tc->z_off = ZORIGIN_CM;
 
             tc->x_off = XORIGIN_CM;
             tc->y_off = YORIGIN_CM;
