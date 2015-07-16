@@ -39,6 +39,9 @@
 
 #include "camera_control_private.h"
 
+#define DEFAULT_FOCAL_LENGTH 535
+#define PS3EYE_FRAMERATE 75
+
 #if defined(CAMERA_CONTROL_USE_PS3EYE_DRIVER)
 
 /**
@@ -119,6 +122,9 @@ camera_control_new(int cameraID)
 	CameraControl* cc = (CameraControl*) calloc(1, sizeof(CameraControl));
 	cc->cameraID = cameraID;
 
+    cc->focl_x = DEFAULT_FOCAL_LENGTH;
+    cc->focl_y = DEFAULT_FOCAL_LENGTH;
+
 #if defined(CAMERA_CONTROL_USE_CL_DRIVER)
 	int w, h;
 	int cams = CLEyeGetCameraCount();
@@ -139,39 +145,38 @@ camera_control_new(int cameraID)
 	cc->frame3ch = cvCreateImage(cvSize(w, h), IPL_DEPTH_8U, 3);
 
 	CLEyeCameraStart(cc->camera);
+
 #elif defined(CAMERA_CONTROL_USE_PS3EYE_DRIVER)
-        ps3eye_init();
-        int cams = ps3eye_count_connected();
+    // Initialize PS3EYEDriver
+    ps3eye_init();
+    int cams = ps3eye_count_connected();
+    if (cams <= cameraID) {
+        free(cc);
+        return NULL;
+    }
+    get_metrics(&(cc->width), &(cc->height));
+    cc->eye = ps3eye_open(cameraID, cc->width, cc->height, PS3EYE_FRAMERATE);
+    cc->framebgr = cvCreateImage(cvSize(cc->width, cc->height), IPL_DEPTH_8U, 3);
 
-        if (cams <= cameraID) {
-            free(cc);
-            return NULL;
-        }
-
-        get_metrics(&(cc->width), &(cc->height));
-
-        cc->eye = ps3eye_open(cameraID, cc->width, cc->height, 60);
-
-        cc->framebgr = cvCreateImage(cvSize(cc->width, cc->height), IPL_DEPTH_8U, 3);
 #else
-        char *video = psmove_util_get_env_string(PSMOVE_TRACKER_FILENAME_ENV);
+    // Assume webcam accessible from OpenCV.
+    char *video = psmove_util_get_env_string(PSMOVE_TRACKER_FILENAME_ENV);
 
-        if (video) {
-            psmove_DEBUG("Using '%s' as video input.\n", video);
-            cc->capture = cvCaptureFromFile(video);
-            free(video);
-        } else {
-            cc->capture = cvCaptureFromCAM(cc->cameraID);
+    if (video) {
+        psmove_DEBUG("Using '%s' as video input.\n", video);
+        cc->capture = cvCaptureFromFile(video);
+        free(video);
+    } else {
+        cc->capture = cvCaptureFromCAM(cc->cameraID);
+        int width, height;
+        get_metrics(&width, &height);
+        cvSetCaptureProperty(cc->capture, CV_CAP_PROP_FRAME_WIDTH, width);
+        cvSetCaptureProperty(cc->capture, CV_CAP_PROP_FRAME_HEIGHT, height);
+    }
 
-            int width, height;
-            get_metrics(&width, &height);
-
-            cvSetCaptureProperty(cc->capture, CV_CAP_PROP_FRAME_WIDTH, width);
-            cvSetCaptureProperty(cc->capture, CV_CAP_PROP_FRAME_HEIGHT, height);
-        }
 #endif
 
-        cc->deinterlace = PSMove_False;
+    cc->deinterlace = PSMove_False;
 
 	return cc;
 }
@@ -212,6 +217,9 @@ camera_control_read_calibration(CameraControl* cc,
         cc->mapy = cvCreateImage(cvSize(width, height), IPL_DEPTH_32F, 1);
 
         cvInitUndistortMap(intrinsic, distortion, cc->mapx, cc->mapy);
+
+        cc->focl_x = CV_MAT_ELEM(*intrinsic, float, 0, 0);
+        cc->focl_y = CV_MAT_ELEM(*intrinsic, float, 1, 1);
 
         // TODO: Shouldn't we free intrinsic and distortion here?
     } else {

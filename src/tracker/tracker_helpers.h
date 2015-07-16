@@ -39,6 +39,7 @@
 #define TH_COLOR_BLACK cvScalar(0, 0, 0, 0)
 #define TH_COLOR_WHITE cvScalar(255, 255, 255, 0)
 #define TH_COLOR_RED cvScalar(0, 0, 255, 0)
+#define TH_COLOR_YELLOW cvScalar(0, 255, 255, 0)
 
 /* Distance of 2 CvPoints, squared */
 #define th_dist_squared(a, b) (((a).x - (b).x) * \

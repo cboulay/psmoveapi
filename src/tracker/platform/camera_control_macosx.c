@@ -47,20 +47,21 @@ camera_control_set_parameters(CameraControl* cc,
     //autoE... setAutoExposure not defined in ps3eye.h
     ps3eye_set_parameter(cc->eye, PS3EYE_AUTO_GAIN, autoG > 0);
     ps3eye_set_parameter(cc->eye, PS3EYE_AUTO_WHITEBALANCE, autoWB > 0);
-    ps3eye_set_parameter(cc->eye, PS3EYE_EXPOSURE, round((511 * exposure) / 0xFFFF));
-    ps3eye_set_parameter(cc->eye, PS3EYE_GAIN, round((79 * gain) / 0xFFFF));
-    //ps3eye_set_parameter(cc->eye, PS3EYE_REDBALANCE, round((255 * wbRed) / 0xFFFF));
-    //wbGreen... setGreenBalance not defined in ps3eye.h
-    //ps3eye_set_parameter(cc->eye, PS3EYE_BLUEBALANCE, round((255 * wbBlue) / 0xFFFF));
-    //ps3eye_set_parameter(cc->eye, PS3EYE_CONTRAST, contrast);  // Transform unknown.
-    //ps3eye_set_parameter(cc->eye, PS3EYE_BRIGHTNESS, brightness);  // Transform unknown.
+    ps3eye_set_parameter(cc->eye, PS3EYE_EXPOSURE, round((511 * exposure) / 0xFFFF));  // 0 <-> 255
+    ps3eye_set_parameter(cc->eye, PS3EYE_GAIN, round((63 * gain) / 0xFFFF)); // 0 <-> 63
+    // Though the following accept up to 255, it seems anything higher than 128 is too strong.
+    ps3eye_set_parameter(cc->eye, PS3EYE_REDBALANCE, round((128 * wbRed) / 0xFFFF));  // 0 <-> 255
+    ps3eye_set_parameter(cc->eye, PS3EYE_BLUEBALANCE, round((128 * wbBlue) / 0xFFFF));  // 0 <-> 255
+    ps3eye_set_parameter(cc->eye, PS3EYE_GREENBALANCE, round((128 * wbGreen) / 0xFFFF));  // 0 <-> 255
+    //ps3eye_set_parameter(cc->eye, PS3EYE_CONTRAST, round((0 * contrast) / 0xFFFF));  // 0 <-> 255
+    ps3eye_set_parameter(cc->eye, PS3EYE_BRIGHTNESS, round((255 * brightness) / 0xFFFF));  // 0 <-> 255
 
     /** The following parameters could be set but are not passed into this function:
-     * ps3eye_set_parameter(cc->eye, PS3EYE_SHARPNESS, ??);
-     * ps3eye_set_parameter(cc->eye, PS3EYE_HUE, ??);
-     * ps3eye_set_parameter(cc->eye, PS3EYE_HFLIP, ??);
-     * ps3eye_set_parameter(cc->eye, PS3EYE_VFLIP, ??);
-     **/
+    * ps3eye_set_parameter(cc->eye, PS3EYE_SHARPNESS, round((63 * ??) / 0xFFF));  // 0 <-> 63
+    * ps3eye_set_parameter(cc->eye, PS3EYE_HUE, round((128 * ??) / 0xFFFF));  // 0 <-> 255
+    * ps3eye_set_parameter(cc->eye, PS3EYE_HFLIP, ?? > 0);
+    * ps3eye_set_parameter(cc->eye, PS3EYE_VFLIP, ?? > 0);
+    **/
 #else
     macosx_camera_set_exposure_lock(1);
 #endif
