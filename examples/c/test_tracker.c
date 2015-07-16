@@ -88,15 +88,23 @@ int main(int arg, char** args) {
         }
     }
 
+	float x, y, r;
+	float xcm, ycm, zcm;
     while ((cvWaitKey(1) & 0xFF) != 27) {
         psmove_tracker_update_image(tracker);
         psmove_tracker_update(tracker, NULL);
+        psmove_tracker_get_position(tracker, controllers[0], &x, &y, &r);
+        psmove_tracker_update_cbb(tracker, NULL);
+        psmove_tracker_get_location(tracker, controllers[0], &xcm, &ycm, &zcm);
         psmove_tracker_annotate(tracker);
 
         frame = psmove_tracker_get_frame(tracker);
         if (frame) {
             cvShowImage("live camera feed", frame);
         }
+
+        printf("x  , %6.2f, y  , %6.2f, r  , %6.2f, xcm, %6.2f, ycm, %6.2f, zcm, %6.2f\n",
+        	x, y, r, xcm, ycm, zcm);
 
         for (i=0; i<count; i++) {
             /* Optional and not required by default (see auto_update_leds above)
@@ -105,10 +113,6 @@ int main(int arg, char** args) {
             psmove_set_leds(controllers[i], r, g, b);
             psmove_update_leds(controllers[i]);
             */
-
-            float x, y, r;
-            psmove_tracker_get_position(tracker, controllers[i], &x, &y, &r);
-            printf("x: %10.2f, y: %10.2f, r: %10.2f\n", x, y, r);
         }
     }
 
