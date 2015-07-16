@@ -75,7 +75,16 @@ int main(int arg, char** args) {
         while (1) {
             printf("Calibrating controller %d...", i);
             fflush(stdout);
-            result = psmove_tracker_enable(tracker, controllers[i]);
+            if (i == 0 && arg >= 3)
+            {
+                result = psmove_tracker_enable_with_color(tracker, controllers[i],
+                    atoi(args[1]), atoi(args[2]), atoi(args[3]));
+                printf("Setting LEDS for controller 1 from command-line r: %i, g: %i, b: %i\n",
+                    atoi(args[1]), atoi(args[2]), atoi(args[3]));
+            }
+            else {
+                result = psmove_tracker_enable(tracker, controllers[i]);
+            }
 
             if (result == Tracker_CALIBRATED) {
                 enum PSMove_Bool auto_update_leds =
