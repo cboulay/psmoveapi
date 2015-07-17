@@ -556,7 +556,7 @@ psmove_tracker_new_with_camera(int camera) {
     tracker->rHSV = cvScalar(COLOR_FILTER_RANGE_H, COLOR_FILTER_RANGE_S, COLOR_FILTER_RANGE_V, 0);
 	tracker->storage = cvCreateMemStorage(0);
 
-    tracker->dimming_factor = 1.0;  // Was 0.
+    tracker->dimming_factor = 0.;  // Was 0.
 
     // Initialize tracker algorithm quality-assessment variables
 	tracker->calibration_t = CALIBRATION_DIFF_T;
@@ -923,14 +923,19 @@ psmove_tracker_blinking_calibration(PSMoveTracker *tracker, PSMove *move,
     double sizes[BLINKS]; // array of blob sizes saved during calibration for estimation of sphere color
     float sizeBest = 0;
     CvSeq *contourBest = NULL;
+    float lastSat;
+    float lastDimming = -1;
 
     // DEBUG log the assigned color
     psmove_html_trace_put_color_var("assignedColor", cvScalar(rgb.b, rgb.g, rgb.r, 0));
 
     float dimming = 1.0;
+    
+    // If previously set, use that
     if (tracker->dimming_factor > 0) {
         dimming = tracker->dimming_factor;
     }
+    
     while (1) {
         for (i = 0; i < BLINKS; i++) {
             // create a diff image
@@ -983,13 +988,25 @@ psmove_tracker_blinking_calibration(PSMoveTracker *tracker, PSMove *move,
         *hsv_color = th_brg2hsv(*color);
         psmove_DEBUG("Dimming: %.2f, H: %.2f, S: %.2f, V: %.2f\n", dimming,
                 hsv_color->val[0], hsv_color->val[1], hsv_color->val[2]);
-
-        if (tracker->dimming_factor == 0.) {
-            if (hsv_color->val[1] > 128) {
-                tracker->dimming_factor = dimming;
+        
+        if (lastDimming >= 0                    // We have a previous dimming
+            && (hsv_color->val[1] < lastSat)    // Now less saturated than last
+            && hsv_color->val[1] > 32)          // Above bare minimum
+        {
+            tracker->dimming_factor = lastDimming;
+            break;
+        }
+        
+        lastDimming = dimming;
+        lastSat = hsv_color->val[1];
+        psmove_DEBUG("Last dimming: %.2f, SV: %.2f, \n", lastDimming, lastSat);
+        
+        if (tracker->dimming_factor == 0.) {  // If not previously set
+            if (hsv_color->val[1] > 128) {        // If sat > sat_thresh
+                tracker->dimming_factor = dimming;    // save and break
                 break;
-            } else if (dimming < 0.01) {
-                break;
+            } else if (dimming < 0.01) {          // If at minimum dimming
+                break;                                // break, no save
             }
         } else {
             break;
@@ -1006,6 +1023,16 @@ psmove_tracker_blinking_calibration(PSMoveTracker *tracker, PSMove *move,
     // calculate upper & lower bounds for the color filter
     CvScalar min = th_scalar_sub(*hsv_color, tracker->rHSV);
     CvScalar max = th_scalar_add(*hsv_color, tracker->rHSV);
+    min.val[0] = MAX(min.val[0], 0);
+    min.val[1] = MAX(min.val[1], 0);
+    min.val[2] = MAX(min.val[2], 0);
+    max.val[0] = MIN(max.val[0], 180);
+    max.val[1] = MIN(max.val[1], 255);
+    max.val[2] = MIN(max.val[2], 255);
+    psmove_DEBUG("filter min: H: %.2f, S: %.2f, V: %.2f\n",
+                 min.val[0], min.val[1], min.val[2]);
+    psmove_DEBUG("filter max: H: %.2f, S: %.2f, V: %.2f\n",
+                 max.val[0], max.val[1], max.val[2]);
 
     CvPoint firstPosition;
     for (i=0; i<BLINKS; i++) {
@@ -1551,10 +1578,9 @@ psmove_tracker_update_controller_cbb(PSMoveTracker *tracker, TrackedController *
         CvSeq* contourBest = NULL;
         psmove_tracker_biggest_contour(roi_m, tracker->storage, &contourBest, &sizeBest);  // get the biggest contour in roi_m
 
-        // cvFitEllipse2 can't work with less than 5 points in the cvSeq, but it's a PITA to get the number of points
-        // so we'll just use the contour area and assume an area >= 10 must have at least 5 points.
-        //psmove_DEBUG("sizeBest: %f\n", sizeBest);
-        contour_garbage = contour_garbage || sizeBest < 10;
+        // cvFitEllipse2 can't work with less than 5 points in the cvSeq
+        //psmove_DEBUG("numPoints: %i\n", contourBest->elem_size / sizeof(CvPoint));
+        //contour_garbage = contour_garbage || (contourBest->elem_size / sizeof(CvPoint)) < 5;
 
         if (contourBest && !contour_garbage) {
             // We found a contour in our ROI, and we didn't already determine that the contour with this ROI was garbage.
@@ -1866,16 +1892,23 @@ psmove_tracker_free(PSMoveTracker *tracker)
 int
 psmove_tracker_adapt_to_light(PSMoveTracker *tracker, float target_luminance)
 {
-    float minimum_exposure = 2051;  // Why 2051 on the lower end?
+    float minimum_exposure = 0;  // Why 2051 (~3%) on the lower end?
     float maximum_exposure = 65535;
-    float current_exposure = (maximum_exposure + minimum_exposure) / 2.;
+    float current_exposure = minimum_exposure;
+    float last_exposure = current_exposure;
+    //float current_exposure = (maximum_exposure + minimum_exposure) / 2.;
+    float last_saturation = 0.0;
+    float next_step = 0;
+    float step_size = maximum_exposure - minimum_exposure;
+    CvScalar imgColor;
+    CvScalar imgHSV;
 
+    /*
     if (target_luminance == 0) {
         return minimum_exposure;
     }
-
-    float step_size = (maximum_exposure - minimum_exposure) / 4.;
-
+     */
+    
     // Switch off the controllers' LEDs for proper environment measurements
     TrackedController *tc;
     for_each_controller(tracker, tc) {
@@ -1884,7 +1917,7 @@ psmove_tracker_adapt_to_light(PSMoveTracker *tracker, float target_luminance)
     }
 
     int i;
-    for (i=0; i<7; i++) {
+    for (i=0; i<10; i++) {
         camera_control_set_parameters(tracker->cc, 0, 0, 0,
                 (int)current_exposure, 0, 0xffff, 0xffff, 0xffff, -1, -1);
 
@@ -1893,22 +1926,49 @@ psmove_tracker_adapt_to_light(PSMoveTracker *tracker, float target_luminance)
         assert(frame != NULL);
 
         // calculate the average color and luminance (energy)
-        float luminance = th_color_avg(cvAvg(frame, NULL));
+        imgColor = cvAvg(frame, NULL);
+        imgHSV = th_brg2hsv(imgColor);
+        float luminance = th_color_avg(imgColor);
 
-        psmove_DEBUG("Exposure: %.2f, Luminance: %.2f\n", current_exposure, luminance);
+        psmove_DEBUG("Exposure: %.2f, Luminance: %.2f, Saturation: %.2f\n",
+                     current_exposure, luminance, imgHSV.val[1]);
+        
+        /*
         if (fabsf(luminance - target_luminance) < 1) {
             break;
         }
+         */
 
         // Binary search for the best exposure setting
-        if (luminance > target_luminance) {
-            current_exposure -= step_size;
-        } else {
-            current_exposure += step_size;
+        if (imgHSV.val[1]/luminance > last_saturation)  // Getting better!
+        {
+            if (current_exposure > last_exposure) // due to increase
+            {
+                next_step = step_size; // keep increasing
+            }
+            else  // due to decreae
+            {
+                next_step = -step_size; // keep decreasing
+            }
         }
-        current_exposure = max(current_exposure, minimum_exposure);
-        current_exposure = min(current_exposure, maximum_exposure);
-
+        else  // Getting worse!
+        {
+            if (current_exposure > last_exposure) // due to increase
+            {
+                next_step = -step_size; // try decreasing
+            }
+            else  // due to decreae
+            {
+                next_step = step_size; // try increasing
+            }
+        }
+        last_exposure = current_exposure;
+        last_saturation = imgHSV.val[1] / luminance;
+        
+        // Prepare for next step
+        current_exposure += next_step;
+        current_exposure = MAX(current_exposure, minimum_exposure);
+        current_exposure = MIN(current_exposure, maximum_exposure);
         step_size /= 2.;
     }
 
@@ -2093,6 +2153,8 @@ void psmove_tracker_biggest_contour(IplImage* img, CvMemStorage* stor, CvSeq** r
 	CvSeq* contour;
 	*resSize = 0;
 	*resContour = 0;
+    
+    
 	cvFindContours(img, stor, &contour, sizeof(CvContour), CV_RETR_LIST, CV_CHAIN_APPROX_SIMPLE, cvPoint(0, 0));
 
 	for (; contour; contour = contour->h_next) {
