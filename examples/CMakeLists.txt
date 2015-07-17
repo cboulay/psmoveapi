@@ -57,7 +57,7 @@ if(PSMOVE_BUILD_TESTS)
     endforeach(TESTNAME)
 
     if(PSMOVE_BUILD_TRACKER)
-        foreach(TESTNAME tracker capture_performance record_video roi_size end2end_latency)
+        foreach(TESTNAME tracker capture_performance record_video roi_size end2end_latency fusion)
             add_executable(test_${TESTNAME} ${CMAKE_CURRENT_LIST_DIR}/c/test_${TESTNAME}.c ${MSVC_SRCS})
             target_link_libraries(test_${TESTNAME} psmoveapi psmoveapi_tracker ${MSVC_LIBS})
         endforeach(TESTNAME)

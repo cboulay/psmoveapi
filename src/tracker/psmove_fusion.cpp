@@ -32,8 +32,12 @@
 #include "../psmove_private.h"
 
 #include <stdlib.h>
-#include <string.h>
 #include <math.h>
+#include <vector>
+#include <fstream>
+#include <iostream>
+#include <sstream>
+#include <string.h>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -41,6 +45,7 @@
 #include <glm/gtc/type_ptr.hpp>
 
 #define PSMOVE_FUSION_STEP_EPSILON (.0001)
+#define TRANSFORM_FILE "transform.csv"
 
 struct _PSMoveFusion {
     PSMoveTracker *tracker;
@@ -51,8 +56,77 @@ struct _PSMoveFusion {
     glm::mat4 projection;
     glm::mat4 modelview;
     glm::vec4 viewport;
+
+    glm::mat4 physical_xf;
+    glm::mat4 total_xf;
 };
 
+void
+psmove_fusion_load_physical_xf(PSMoveFusion *fusion)
+{
+    char *transform_file = psmove_util_get_file_path(TRANSFORM_FILE);
+    std::ifstream infile;
+    infile.open(transform_file);
+    if (infile.is_open())
+    {
+        std::vector<float> row;
+        std::string line;
+        getline(infile, line);
+        std::stringstream ss(line);
+        std::string field;
+        while (getline(ss, field, ','))
+        {
+            std::stringstream fs(field);
+            float f = 0.0;
+            fs >> f;
+            row.push_back(f);
+        }
+
+        int i;
+        for (i = 0; i < 12; i++)
+        {
+            int row_ix = i % 3;
+            int col_ix = (float(i) / 3.0);
+            fusion->physical_xf[col_ix][row_ix] = row[i];
+        }
+        infile.close();
+    }
+    free(transform_file);
+}
+
+void
+print_mat4(glm::mat4 in)
+{
+    printf("glm::mat4\n");
+    printf("%f, %f, %f, %f\n%f, %f, %f, %f\n%f, %f, %f, %f\n%f, %f, %f, %f\n",
+        in[0][0], in[1][0], in[2][0], in[3][0],
+        in[0][1], in[1][1], in[2][1], in[3][1],
+        in[0][2], in[1][2], in[2][2], in[3][2],
+        in[0][3], in[1][3], in[2][3], in[3][3]);
+}
+
+void
+psmove_fusion_update_transform(PSMoveFusion *fusion, float *pos_xyz, float *quat_wxyz)
+{
+    glm::vec3 position(pos_xyz[0], pos_xyz[1], pos_xyz[2]);
+    glm::quat quaternion(quat_wxyz[0], quat_wxyz[1], quat_wxyz[2], quat_wxyz[3]);
+    glm::mat4 quatmat = glm::mat4_cast(quaternion);
+    glm::mat4 posmat = glm::translate(glm::mat4(), position);
+    fusion->total_xf = posmat * quatmat * fusion->physical_xf;
+    /*
+    printf("fusion->total_xf = posmat * quatmat * fusion->physical_xf;\n");
+    printf("posmat:\n");
+    print_mat4(posmat);
+    printf("quatmat:\n");
+    print_mat4(quatmat);
+    printf("posmat*quatmat:\n");
+    print_mat4(posmat*quatmat);
+    printf("fusion->physical_xf:\n");
+    print_mat4(fusion->physical_xf);
+    printf("fusion->total_xf:\n");
+    print_mat4(fusion->total_xf);
+    */
+}
 
 PSMoveFusion *
 psmove_fusion_new(PSMoveTracker *tracker, float z_near, float z_far)
@@ -70,6 +144,10 @@ psmove_fusion_new(PSMoveTracker *tracker, float z_near, float z_far)
     fusion->projection = glm::perspectiveFov<float>(PSEYE_FOV_BLUE_DOT,
             fusion->width, fusion->height, z_near, z_far);
     fusion->viewport = glm::vec4(0., 0., fusion->width, fusion->height);
+
+    fusion->physical_xf = glm::mat4(1.0f);   // Identity matrix.
+    psmove_fusion_load_physical_xf(fusion);  // Load transform from file if it exists.
+    fusion->total_xf = fusion->physical_xf;  // For now there is no additional transform.
 
     return fusion;
 }
@@ -113,57 +191,23 @@ psmove_fusion_get_position(PSMoveFusion *fusion, PSMove *move,
     psmove_return_if_fail(fusion != NULL);
     psmove_return_if_fail(move != NULL);
 
-    float camX, camY, camR;
-    psmove_tracker_get_position(fusion->tracker, move, &camX, &camY, &camR);
+    // Assuming the update_tracker_cbb was called.
+    psmove_tracker_get_location(fusion->tracker, move, x, y, z);
+}
 
-    float winX = (float)camX;
-    float winY = fusion->height - (float)camY;
-    float winZ = .5; /* start value for binary search */
+void
+psmove_fusion_get_transformed_position(PSMoveFusion *fusion, PSMove *move,
+float *x, float *y, float *z)
+{
+    float xcm, ycm, zcm;
+    psmove_fusion_get_position(fusion, move, &xcm, &ycm, &zcm);
 
-    float targetWidth = 2.*camR;
+    glm::vec4 position = glm::vec4(glm::vec3(xcm, ycm, zcm), 1.0f);
+    glm::vec4 transformed = fusion->total_xf * position;
 
-    glm::vec3 obj;
-
-    /* Binary search for the best distance based on the current projection */
-    float step = .25;
-    while (step > PSMOVE_FUSION_STEP_EPSILON) {
-        /* Calculate center position of sphere */
-        obj = glm::unProject(glm::vec3(winX, winY, winZ),
-                glm::mat4(), fusion->projection, fusion->viewport);
-
-        /* Project left edge center of sphere */
-        glm::vec3 left = glm::project(glm::vec3(obj.x - .5, obj.y, obj.z),
-                glm::mat4(), fusion->projection, fusion->viewport);
-
-        /* Project right edge center of sphere */
-        glm::vec3 right = glm::project(glm::vec3(obj.x + .5, obj.y, obj.z),
-                glm::mat4(), fusion->projection, fusion->viewport);
-
-        float width = (right.x - left.x);
-        if (width > targetWidth) {
-            /* Too near */
-            winZ += step;
-        } else if (width < targetWidth) {
-            /* Too far away */
-            winZ -= step;
-        } else {
-            /* Perfect fit */
-            break;
-        }
-        step *= .5;
-    }
-
-    if (x != NULL) {
-        *x = obj.x;
-    }
-
-    if (y != NULL) {
-        *y = obj.y;
-    }
-
-    if (z != NULL) {
-        *z = obj.z;
-    }
+    *x = transformed[0];
+    *y = transformed[1];
+    *z = transformed[2];
 }
 
 void

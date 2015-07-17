@@ -56,6 +56,20 @@ typedef struct _PSMoveFusion PSMoveFusion; /*!< Handle to a PS Move Fusion objec
 #endif
 
 /**
+* \brief Combines provided transform with physical_xf for total_xf
+*
+* Creates and returns a new \ref PSMoveFusion object.
+*
+* \param fusion     A valid \ref PSMoveFusion handle
+* \param pos_xyz    A pointer to a float[3] array representing the
+*                   additional transform translation
+* \param quat_wxyz  A pointer to a float[4] array representing the
+*                   additional transform quaternion
+**/
+ADDAPI void
+ADDCALL psmove_fusion_update_transform(PSMoveFusion *fusion, float *pos_xyz, float *quat_wxyz);
+
+/**
  * \brief Create a new PS Move Fusion object
  *
  * Creates and returns a new \ref PSMoveFusion object.
@@ -109,6 +123,19 @@ ADDAPI float *
 ADDCALL psmove_fusion_get_modelview_matrix(PSMoveFusion *fusion, PSMove *move);
 
 /**
+* \brief Get a pointer to the 4x4 transform matrix
+*
+* This function returns the total transform matrix
+*
+* \param fusion A valid \ref PSMoveFusion handle
+*
+* \return A pointer to a 16-item (4x4) float array representing
+*         the transform matrix.
+**/
+ADDAPI float *
+ADDCALL psmove_fusion_get_transform_matrix(PSMoveFusion *fusion);
+
+/**
  * \brief Get the 3D position of a controller
  *
  * This function returns the 3D position (relative to the camera)
@@ -123,6 +150,22 @@ ADDCALL psmove_fusion_get_modelview_matrix(PSMoveFusion *fusion, PSMove *move);
 ADDAPI void
 ADDCALL psmove_fusion_get_position(PSMoveFusion *fusion, PSMove *move,
         float *x, float *y, float *z);
+
+/**
+* \brief Get the 3D position of a controller after applying transforms
+*
+* This function returns the 3D position of the motion controller
+* in a new coordinate space.
+*
+* \param fusion A valid \ref PSMoveFusion handle
+* \param move A valid \ref PSMove handle
+* \param x A pointer to store the X part of the position vector
+* \param y A pointer to store the Y part of the position vector
+* \param z A pointer to store the Z part of the position vector
+**/
+ADDAPI void
+ADDCALL psmove_fusion_get_transformed_position(PSMoveFusion *fusion, PSMove *move,
+float *x, float *y, float *z);
 
 /**
  * \brief Destroy an existing fusion instance and free allocated resources
