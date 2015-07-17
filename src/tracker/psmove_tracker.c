@@ -62,9 +62,9 @@
 #define CALIB_MIN_SIZE 50		 	// minimum size of the estimated glowing sphere during calibration process (in pixel)
 #define CALIB_SIZE_STD 10	     	// maximum standard deviation (in %) of the glowing spheres found during calibration process
 #define CALIB_MAX_DIST 30		 	// maximum displacement of the separate found blobs
-#define COLOR_FILTER_RANGE_H 20		// +- H-Range of the hsv-colorfilter; full scale is 0-180
-#define COLOR_FILTER_RANGE_S 85		// +- s-Range of the hsv-colorfilter; full scale is 0-255
-#define COLOR_FILTER_RANGE_V 85		// +- v-Range of the hsv-colorfilter; full scale is 0-255
+#define COLOR_FILTER_RANGE_H 15		// +- H-Range of the hsv-colorfilter; full scale is 0-180
+#define COLOR_FILTER_RANGE_S 75		// +- s-Range of the hsv-colorfilter; full scale is 0-255
+#define COLOR_FILTER_RANGE_V 75		// +- v-Range of the hsv-colorfilter; full scale is 0-255
 
 /* Thresholds */
 #define ROI_ADJUST_FPS_T 160		// the minimum fps to be reached, if a better roi-center adjusment is to be perfomred
@@ -556,7 +556,7 @@ psmove_tracker_new_with_camera(int camera) {
     tracker->rHSV = cvScalar(COLOR_FILTER_RANGE_H, COLOR_FILTER_RANGE_S, COLOR_FILTER_RANGE_V, 0);
 	tracker->storage = cvCreateMemStorage(0);
 
-    tracker->dimming_factor = 0.;  // Was 0.
+    tracker->dimming_factor = 0.;  // Initialize at zero triggers blinking calibration.
 
     // Initialize tracker algorithm quality-assessment variables
 	tracker->calibration_t = CALIBRATION_DIFF_T;
@@ -643,10 +643,8 @@ psmove_tracker_new_with_camera(int camera) {
     // Default to the distance parameters for the PS Eye camera
     tracker->distance_parameters = pseye_distance_parameters;
 
-
 	// Set the exposure to a constant based on a target luminance.
     psmove_tracker_set_exposure(tracker, Exposure_LOW);
-
 
 	// just query a frame so that we know the camera works
 	IplImage* frame = NULL;
@@ -728,6 +726,7 @@ psmove_tracker_new_with_camera(int camera) {
 	return tracker;
 }
 
+#define N_PRESET_COLORS 5
 enum PSMoveTracker_Status
 psmove_tracker_enable(PSMoveTracker *tracker, PSMove *move)
 {
@@ -758,10 +757,76 @@ psmove_tracker_enable(PSMoveTracker *tracker, PSMove *move)
 #endif
     };
 
+    // Re-order the sphere colours by hue-distance to non-illuminated image.
+    int colorOrder[N_PRESET_COLORS];
+    psmove_tracker_update_image(tracker);
+    IplImage* frame = tracker->frame;
+    CvScalar avg_rgb = cvAvg(frame, NULL);
+    CvScalar avg_hsv = th_brg2hsv(avg_rgb);
+    psmove_DEBUG("avg_hsv: h %.2f, s %.2f, v%.2f\n", avg_hsv.val[0], avg_hsv.val[1], avg_hsv.val[2]);
+    // The expected HSV for each possible LED color
+    CvScalar led_hsv[N_PRESET_COLORS];
+    // The difference between expected LED hue and no-LED image hue
+    float led_avg_deltah[N_PRESET_COLORS];
+    // Maximum difference between image and LED hues so far
+    float max_deltah = 0;
+    for (i = 0; i < N_PRESET_COLORS; i++)
+    {
+        led_hsv[i] = th_brg2hsv(cvScalar(preset_colors[i].b, preset_colors[i].g, preset_colors[i].r, 0));
+        led_avg_deltah[i] = fabs(led_hsv[i].val[0] - avg_hsv.val[0]);
+        if (led_avg_deltah[i] > max_deltah)
+        {
+            max_deltah = led_avg_deltah[i];
+            colorOrder[0] = i;
+        }
+    }
+    psmove_DEBUG("Color %i: r %d, g %d, b %d\n", 0,
+        preset_colors[colorOrder[0]].r, preset_colors[colorOrder[0]].g, preset_colors[colorOrder[0]].b);
+
+    // Sort the remaining by distance to above.
+    int already_used = 0;
+    float total_distance;  // 
+    float this_deltah;
+    int j; // index into led_hsv
+    int k; // index into all previous colorOrder
+    for (i = 1; i < N_PRESET_COLORS; i++) // index into the next colorOrder we are trying to find.
+    {
+        max_deltah = 0;
+        for (j = 0; j < N_PRESET_COLORS; j++) 
+        {
+            already_used = 0;
+            for (k = 0; k < i; k++) 
+            {
+                if (j == colorOrder[k])
+                {
+                    already_used = 1;
+                }
+            }
+            if (already_used == 0)
+            {
+                total_distance = led_avg_deltah[j] * led_avg_deltah[j];
+                for (k = 0; k < i; k++)
+                {
+                    this_deltah = led_hsv[j].val[0] - led_hsv[k].val[0];
+                    total_distance += this_deltah * this_deltah;
+                }
+                total_distance = sqrt(total_distance);
+                if (total_distance > max_deltah)
+                {
+                    max_deltah = total_distance;
+                    colorOrder[i] = j;
+                }
+            }
+        }
+        psmove_DEBUG("Color %i: r %d, g %d, b %d\n", i,
+            preset_colors[colorOrder[i]].r, preset_colors[colorOrder[i]].g, preset_colors[colorOrder[i]].b);
+    }
+    
+
     for (i=0; i<ARRAY_LENGTH(preset_colors); i++) {
-        if (!psmove_tracker_color_is_used(tracker, preset_colors[i])) {
+        if (!psmove_tracker_color_is_used(tracker, preset_colors[colorOrder[i]])) {
             return psmove_tracker_enable_with_color_internal(tracker,
-                    move, preset_colors[i]);
+                    move, preset_colors[colorOrder[i]]);
         }
     }
 
@@ -999,7 +1064,6 @@ psmove_tracker_blinking_calibration(PSMoveTracker *tracker, PSMove *move,
         
         lastDimming = dimming;
         lastSat = hsv_color->val[1];
-        psmove_DEBUG("Last dimming: %.2f, SV: %.2f, \n", lastDimming, lastSat);
         
         if (tracker->dimming_factor == 0.) {  // If not previously set
             if (hsv_color->val[1] > 128) {        // If sat > sat_thresh
@@ -1123,6 +1187,8 @@ psmove_tracker_enable_with_color_internal(PSMoveTracker *tracker, PSMove *move,
     CvScalar color;
     CvScalar hsv_color;
     if (psmove_tracker_blinking_calibration(tracker, move, rgb, &color, &hsv_color)) {
+        psmove_DEBUG("Result of calib: r %d, g %d, b %d, h %f, s %f, v %f\n",
+            rgb.r, rgb.g, rgb.b, hsv_color.val[0], hsv_color.val[1], hsv_color.val[2]);
         // Find the next free slot to use as TrackedController
         TrackedController *tc = psmove_tracker_find_controller(tracker, NULL);
 
@@ -1134,6 +1200,8 @@ psmove_tracker_enable_with_color_internal(PSMoveTracker *tracker, PSMove *move,
             psmove_tracker_remember_color(tracker, rgb, color);
             tc->eColor = tc->eFColor = color;
             tc->eColorHSV = tc->eFColorHSV = hsv_color;
+            psmove_DEBUG("Stored color: h %f, s %f, v %f\n",
+                tc->eColorHSV.val[0], tc->eColorHSV.val[1], tc->eColorHSV.val[2]);
 
             tc->x_off = XORIGIN_CM;
             tc->y_off = YORIGIN_CM;
@@ -1570,7 +1638,7 @@ psmove_tracker_update_controller_cbb(PSMoveTracker *tracker, TrackedController *
         cvSetImageROI(tracker->frame, cvRect(tc->roi_x, tc->roi_y, roi_i->width, roi_i->height)); // Set the image roi -> limits processing to this region
         cvCvtColor(tracker->frame, roi_i, CV_BGR2HSV); // Convert the ROI colour space in frame's roi, copy result to roi_i
         cvInRangeS(roi_i, min, max, roi_m);  // apply colour filter, copy result to roi_m (grayscale)
-        //cvSmooth(roi_m, roi_m, CV_GAUSSIAN, 3, 3, 0, 0); // smooth shrinks the blob's found contour, giving the wrong depth.
+        cvSmooth(roi_m, roi_m, CV_GAUSSIAN, 3, 3, 0, 0); // smooth shrinks the blob's found contour, giving the wrong depth.
         //cvMorphologyEx(roi_m, roi_m, NULL, NULL, CV_MOP_CLOSE, 1 ); // Shrinks the blob slightly, also slow.
 
         // Get the contour in the ROI
@@ -1578,11 +1646,7 @@ psmove_tracker_update_controller_cbb(PSMoveTracker *tracker, TrackedController *
         CvSeq* contourBest = NULL;
         psmove_tracker_biggest_contour(roi_m, tracker->storage, &contourBest, &sizeBest);  // get the biggest contour in roi_m
 
-        // cvFitEllipse2 can't work with less than 5 points in the cvSeq
-        //psmove_DEBUG("numPoints: %i\n", contourBest->elem_size / sizeof(CvPoint));
-        //contour_garbage = contour_garbage || (contourBest->elem_size / sizeof(CvPoint)) < 5;
-
-        if (contourBest && !contour_garbage) {
+        if (contourBest && !contour_garbage && CV_IS_SEQ(contourBest)) {
             // We found a contour in our ROI, and we didn't already determine that the contour with this ROI was garbage.
 
             //cvSet(roi_m, TH_COLOR_BLACK, NULL);  // Set the whole ROI to black
@@ -1601,7 +1665,7 @@ psmove_tracker_update_controller_cbb(PSMoveTracker *tracker, TrackedController *
                 float d_y = (tc->roi_y + br.y + br.height / 2) - tc->y;
                 delta_px = sqrt(d_x*d_x + d_y*d_y);
             }
-            contour_garbage = rectRatio >= 1.25 || delta_px >= 400;
+            contour_garbage = rectRatio >= 1.25 || delta_px >= 400 || (br.width*br.height)<25;
 
             if (!roi_recentered && !contour_garbage) {
                 // Recenter the ROI on the middle of the bounding rectangle, at smallest ROI >= 3x br size, limited by image size.
@@ -1636,6 +1700,8 @@ psmove_tracker_update_controller_cbb(PSMoveTracker *tracker, TrackedController *
 
                 // Fit an ellipse to our contour
                 CvBox2D ellipse = cvFitEllipse2(contourBest); // TODO: Roll our own with some constraints.
+                // cvFitEllipse2 can't work with less than 5 points in the cvSeq, but there's no easy way
+                // to count the number of points
 
                 // Offset ellipse by our ROI
                 ellipse.center.x += tc->roi_x;
@@ -1940,7 +2006,7 @@ psmove_tracker_adapt_to_light(PSMoveTracker *tracker, float target_luminance)
          */
 
         // Binary search for the best exposure setting
-        if (imgHSV.val[1]/luminance > last_saturation)  // Getting better!
+        if ((imgHSV.val[1] / MAX(fabs(luminance - target_luminance),1.0)) > last_saturation)  // Getting better!
         {
             if (current_exposure > last_exposure) // due to increase
             {
