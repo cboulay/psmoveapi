@@ -758,6 +758,8 @@ psmove_tracker_enable(PSMoveTracker *tracker, PSMove *move)
     };
 
     // Re-order the sphere colours by hue-distance to non-illuminated image.
+    int colorOrder[] = { 1, 4, 0, 2, 3 };
+    /*
     int colorOrder[N_PRESET_COLORS];
     psmove_tracker_update_image(tracker);
     IplImage* frame = tracker->frame;
@@ -821,7 +823,7 @@ psmove_tracker_enable(PSMoveTracker *tracker, PSMove *move)
         psmove_DEBUG("Color %i: r %d, g %d, b %d\n", i,
             preset_colors[colorOrder[i]].r, preset_colors[colorOrder[i]].g, preset_colors[colorOrder[i]].b);
     }
-    
+    */
 
     for (i=0; i<ARRAY_LENGTH(preset_colors); i++) {
         if (!psmove_tracker_color_is_used(tracker, preset_colors[colorOrder[i]])) {
@@ -866,7 +868,7 @@ psmove_tracker_old_color_is_tracked(PSMoveTracker* tracker, PSMove* move, struct
         psmove_update_leds(move);
         usleep(1000 * 10); // wait 10ms - ok, since we're not blinking
         psmove_tracker_update_image(tracker);
-        psmove_tracker_update_cbb(tracker, move);
+        psmove_tracker_update(tracker, move);
 
         if (tc->is_tracked) {
             // TODO: Verify quality criteria to avoid bogus tracking
@@ -1454,7 +1456,7 @@ psmove_tracker_update_controller(PSMoveTracker *tracker, TrackedController *tc)
 			}
 
 			// apply x/y coordinate smoothing if enabled
-			if (tracker->tracker_adaptive_z) {
+			if (tracker->tracker_adaptive_xy) {
 				// a big distance between the old and new center of mass results in no smoothing
 				// a little one to strong smoothing
 				float diff = sqrt(th_dist_squared(oldMCenter, newMCenter));
@@ -1620,12 +1622,13 @@ psmove_tracker_update_controller_cbb(PSMoveTracker *tracker, TrackedController *
     // 2b. The contour is not found
     //          - Then enlarge the ROI and try again. Go to 1
     //          - ROI cannot be enlarged anymore. break.
-    // 3.   (the contour is found) Don't smooth contour (I find it gives a poor distance estimate)
+    // 3.   (the contour is found) Smooth contour (though I find it gives a poor distance estimate)
     // 4.   Re-center ROI on middle of bounding rect of countour and re-size to smallest ROI > 3x bounding rect, not extending past image
     // 5.   Re-get contour with new ROI
     // 6.   Fit ellipse to contour
     // 7.   Do trigonometry to get x, y, z in cm
-    // 8.   TODO: Colour adaptation
+    // 8.   Weak low-pass filter on position.
+    // 9.   Colour adaptation
 
     int sphere_found = 0;
     int roi_recentered = 0;
@@ -1650,12 +1653,8 @@ psmove_tracker_update_controller_cbb(PSMoveTracker *tracker, TrackedController *
         CvSeq* contourBest = NULL;
         psmove_tracker_biggest_contour(roi_m, tracker->storage, &contourBest, &sizeBest);  // get the biggest contour in roi_m
 
-        if (contourBest && !contour_garbage && CV_IS_SEQ(contourBest)) {
+        if (contourBest && CV_IS_SEQ(contourBest) && !contour_garbage) {
             // We found a contour in our ROI, and we didn't already determine that the contour with this ROI was garbage.
-
-            //cvSet(roi_m, TH_COLOR_BLACK, NULL);  // Set the whole ROI to black
-            //cvDrawContours(roi_m, contourBest, TH_COLOR_WHITE, TH_COLOR_WHITE, -1, CV_FILLED, 8, cvPoint(0, 0)); // Set a white disc. Doesn't really help.
-            //int pixelInBlob = cvCountNonZero(roi_m);
 
             // Quickly evaluate the quality of the contour. We want to guard against garbage data.
             // e.g.,
@@ -1705,7 +1704,7 @@ psmove_tracker_update_controller_cbb(PSMoveTracker *tracker, TrackedController *
                 // Fit an ellipse to our contour
                 CvBox2D ellipse = cvFitEllipse2(contourBest); // TODO: Roll our own with some constraints.
                 // cvFitEllipse2 can't work with less than 5 points in the cvSeq, but there's no easy way
-                // to count the number of points
+                // to count the number of points from a CvSeq**
 
                 // Offset ellipse by our ROI
                 ellipse.center.x += tc->roi_x;
@@ -1742,33 +1741,62 @@ psmove_tracker_update_controller_cbb(PSMoveTracker *tracker, TrackedController *
                 float x = L*x_i / L_i;
                 float y = L*y_i / L_i;
 
-                // Copy values to tracked controller.
-                if (!isnan(x) && !isnan(y) && !isnan(z))
+                // Filter x, y, z
+                if ( (tracker->tracker_adaptive_xy || tracker->tracker_adaptive_z)
+                    && !isnan(x) && !isnan(y) && !isnan(z)) {
+                    // Traveling 10 cm in one frame should have 0 smoothing
+                    // Traveling 0+noise cm in one frame should have
+                    // 60% xy smoothing, 80% z smoothing
+                    float distance = sqrt((tc->xcm - x) * (tc->xcm - x)
+                        + (tc->ycm - y) * (tc->ycm - y)
+                        + (tc->zcm - z) * (tc->zcm - z));
+                    if (tracker->tracker_adaptive_xy)
+                    {
+                        float fxy = MIN(distance * (0.60 / 10) + 0.40, 1);
+                        tc->xcm = tc->xcm * (1 - fxy) + x * fxy;
+                        tc->ycm = tc->ycm * (1 - fxy) + y * fxy;
+                    }
+                    else
+                    {
+                        tc->xcm = x;
+                        tc->ycm = y;
+                    }
+                    if (tracker->tracker_adaptive_z)
+                    {
+                        float fz = MIN(distance * (0.80 / 10) + 0.2, 1);
+                        tc->zcm = tc->zcm * (1 - fz) + z * fz;
+                    }
+                    else
+                    {
+                        tc->zcm = z;
+                    }
+                }
+                else if (!isnan(x) && !isnan(y) && !isnan(z))
                 {
                     tc->xcm = x;
                     tc->ycm = y;
                     tc->zcm = z;
                 }
-
                 sphere_found = 1; // breaks out of while loop
 
-                // TODO: Adaptive colour estimation?
-                /*
+                // Adaptive sphere colour filtering
                 long now = psmove_util_get_ticks();
-                if (tracker->color_update_rate > 0 && (now - tc->last_color_update) > tracker->color_update_rate * 1000) {
-                // calculate the new estimated color (adaptive color estimation)
-                CvScalar newColor = cvAvg(tracker->frame, roi_m);
-                tc->eColor = th_scalar_mul(th_scalar_add(tc->eColor, newColor), 0.5);
-                tc->eColorHSV = th_brg2hsv(tc->eColor);
-                tc->last_color_update = now;
-                // CHECK if the current estimate is too far away from its original estimation
-                if (psmove_tracker_hsvcolor_diff(tc) > tracker->adapt_t1) {
-                tc->eColor = tc->eFColor;
-                tc->eColorHSV = tc->eFColorHSV;
-                sphere_found = 0;
+                if (tracker->color_update_rate > 0 && (now - tc->last_color_update) > tracker->color_update_rate * 1000)
+                {
+                    // Cutout only the tracked contour from our frame.
+                    cvSet(roi_m, TH_COLOR_BLACK, NULL);  // Set the whole ROI to black
+                    cvDrawContours(roi_m, contourBest, TH_COLOR_WHITE, TH_COLOR_WHITE, -1, CV_FILLED, 8, cvPoint(0, 0)); // Set a white disc.
+                    CvScalar newColor = cvAvg(tracker->frame, roi_m);
+                    tc->eColor = th_scalar_mul(th_scalar_add(tc->eColor, newColor), 0.5);
+                    tc->eColorHSV = th_brg2hsv(tc->eColor);
+                    tc->last_color_update = now;
+                    // CHECK if the current estimate is too far away from its original estimation
+                    if (psmove_tracker_hsvcolor_diff(tc) > tracker->adapt_t1) {
+                        tc->eColor = tc->eFColor;
+                        tc->eColorHSV = tc->eFColorHSV;
+                        sphere_found = 0;
+                    }
                 }
-                }
-                */
             }
         }
         else if (tc->roi_level>0) {
