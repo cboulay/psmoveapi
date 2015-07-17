@@ -142,18 +142,18 @@ psmove_orientation_update(PSMoveOrientation *orientation)
 
                 /* Accelerometer */
                 orientation->output[0],
+                orientation->output[1],
                 orientation->output[2],
-                -orientation->output[1],
 
                 /* Gyroscope */
                 orientation->output[3],
+                orientation->output[4],
                 orientation->output[5],
-                -orientation->output[4],
 
                 /* Magnetometer */
                 orientation->output[6],
-                orientation->output[8],
-                orientation->output[7]
+                orientation->output[7],
+                orientation->output[8]
         );
 #else
         psmove_DEBUG("Built without Madgwick AHRS - no orientation tracking");
@@ -237,11 +237,13 @@ psmove_orientation_reset_quaternion(PSMoveOrientation *orientation)
      * Normalize and conjugate in one step:
      *  - Normalize via the length
      *  - Conjugate using (scalar, x, y, z) -> (scalar, -x, -y, -z)
+     * CBB modified to only reset yaw axis
      **/
-    double length = sqrt(q0*q0 + q1*q1 + q2*q2 + q3*q3);
+    //double length = sqrt(q0*q0 + q1*q1 + q2*q2 + q3*q3);
+    double length = sqrt(q0*q0 + q3*q3);
     orientation->reset_quaternion[0] = q0 / length;
-    orientation->reset_quaternion[1] = -q1 / length;
-    orientation->reset_quaternion[2] = -q2 / length;
+    orientation->reset_quaternion[1] = 0; // -q1 / length;
+    orientation->reset_quaternion[2] = 0; // -q2 / length;
     orientation->reset_quaternion[3] = -q3 / length;
 }
 
