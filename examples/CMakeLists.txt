@@ -42,7 +42,7 @@ if(PSMOVE_BUILD_EXAMPLES)
     endif()
 
     if(PSMOVE_BUILD_TRACKER)
-        foreach(EXAMPLE distance_calibration)
+        foreach(EXAMPLE distance_calibration tracker_camera_calibration)
             add_executable(${EXAMPLE} ${CMAKE_CURRENT_LIST_DIR}/c/${EXAMPLE}.c ${MSVC_SRCS})
             target_link_libraries(${EXAMPLE} psmoveapi psmoveapi_tracker ${MSVC_LIBS})
         endforeach()
