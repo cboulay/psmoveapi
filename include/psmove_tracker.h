@@ -204,6 +204,18 @@ ADDAPI enum PSMoveTracker_Exposure
 ADDCALL psmove_tracker_get_exposure(PSMoveTracker *tracker);
 
 /**
+* \brief Set whether or not the tracker should do smoothing.
+*
+* This function enables (1) or disables (0) smoothing for xy and z dimensions.
+*
+* \param tracker A valid \ref PSMoveTracker handle
+* \param adaptive_xy int 0 or 1
+* \param adaptive_z int 0 or 1
+**/
+ADDAPI void
+ADDCALL psmove_tracker_set_smoothing(PSMoveTracker *tracker, int adaptive_xy, int adaptive_z);
+
+/**
  * \brief Enable or disable camera image deinterlacing (line doubling)
  *
  * Enables or disables camera image deinterlacing for this tracker.

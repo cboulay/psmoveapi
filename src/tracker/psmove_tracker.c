@@ -522,6 +522,13 @@ psmove_tracker_get_exposure(PSMoveTracker *tracker)
 }
 
 void
+psmove_tracker_set_smoothing(PSMoveTracker *tracker, int adaptive_xy, int adaptive_z)
+{
+    tracker->tracker_adaptive_xy = adaptive_xy > 0;
+    tracker->tracker_adaptive_z = adaptive_z > 0;
+}
+
+void
 psmove_tracker_enable_deinterlace(PSMoveTracker *tracker,
         enum PSMove_Bool enabled)
 {
