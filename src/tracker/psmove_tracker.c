@@ -490,7 +490,7 @@ psmove_tracker_set_exposure(PSMoveTracker *tracker,
     float target_luminance = 0;
     switch (tracker->exposure_mode) {
         case Exposure_LOW:
-            target_luminance = 12;
+            target_luminance = 8;
             break;
         case Exposure_MEDIUM:
             target_luminance = 25;
@@ -2061,7 +2061,7 @@ psmove_tracker_adapt_to_light(PSMoveTracker *tracker, float target_luminance)
             }
         }
         last_exposure = current_exposure;
-        last_saturation = imgHSV.val[1] / luminance;
+        last_saturation = imgHSV.val[1] / MAX(fabs(luminance - target_luminance), 1.0);
         
         // Prepare for next step
         current_exposure += next_step;
