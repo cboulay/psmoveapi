@@ -184,6 +184,13 @@ psmove_fusion_get_modelview_matrix(PSMoveFusion *fusion, PSMove *move)
     return glm::value_ptr(fusion->modelview);
 }
 
+float *
+psmove_fusion_get_transform_matrix(PSMoveFusion *fusion)
+{
+    psmove_return_val_if_fail(fusion != NULL, NULL);
+    return glm::value_ptr(fusion->total_xf);
+}
+
 void
 psmove_fusion_get_position(PSMoveFusion *fusion, PSMove *move,
         float *x, float *y, float *z)
