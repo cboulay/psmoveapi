@@ -39,6 +39,7 @@ fi
     export CXXFLAGS="$CXXFLAGS $ARCHFLAGS"
     ./autogen.sh
     ./configure
+    ./configure
     make ${MAKE_ARGS}
 )
 
@@ -61,8 +62,8 @@ if [ ! -d $OPENCV_INSTALL_DIR ]; then
           -DBUILD_FAT_JAVA_LIB=OFF \
           -DBUILD_PACKAGE=OFF \
           -DBUILD_opencv_apps=OFF \
-          -DBUILD_opencv_calib3d=OFF \
-          -DBUILD_opencv_flann=OFF \
+          -DBUILD_opencv_calib3d=ON \
+          -DBUILD_opencv_flann=ON \
           -DBUILD_opencv_features2d=OFF \
           -DBUILD_opencv_objdetect=OFF \
           -DBUILD_opencv_photo=OFF \
@@ -70,7 +71,7 @@ if [ ! -d $OPENCV_INSTALL_DIR ]; then
           -DBUILD_opencv_stitching=OFF \
           -DBUILD_opencv_superres=OFF \
           -DBUILD_opencv_ts=OFF \
-          -DBUILD_opencv_ml=OFF \
+          -DBUILD_opencv_ml=ON \
           -DBUILD_opencv_video=OFF \
           -DBUILD_opencv_videostab=OFF \
           -DBUILD_opencv_world=OFF \
