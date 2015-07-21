@@ -340,7 +340,7 @@ int psmove_tracker_update_controller_cbb(PSMoveTracker* tracker, TrackedControll
  *  img  		- (in) 	the binary image to search for contours
  *  stor 		- (out) a storage that can be used to save the result of this function
  *  resContour 	- (out) points to the biggest contour found within the image
- *  resSize 	- (out)	the size of that contour in px²
+ *  resSize 	- (out)	the size of that contour in pxÂ²
  */
 void psmove_tracker_biggest_contour(IplImage* img, CvMemStorage* stor, CvSeq** resContour, float* resSize);
 
@@ -1002,7 +1002,7 @@ psmove_tracker_blinking_calibration(PSMoveTracker *tracker, PSMove *move,
 
     // DEBUG log the assigned color
     psmove_html_trace_put_color_var("assignedColor", cvScalar(rgb.b, rgb.g, rgb.r, 0));
-v
+    
     float dimming = 1.0;
     
     // If previously set, use that
