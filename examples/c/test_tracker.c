@@ -31,7 +31,6 @@
 #include <stdio.h>
 
 #include <time.h>
-#include <unistd.h>
 #include <assert.h>
 
 #include "opencv2/core/core_c.h"
@@ -43,6 +42,12 @@
 
 int main(int arg, char** args) {
     int i;
+    
+    if (!psmove_init(PSMOVE_CURRENT_VERSION)) {
+        fprintf(stderr, "PS Move API init failed (wrong version?)\n");
+        exit(1);
+    }
+    
     int count = psmove_count_connected();
 
     printf("### Found %d controllers.\n", count);
@@ -122,6 +127,7 @@ int main(int arg, char** args) {
 
     psmove_tracker_free(tracker);
     free(controllers);
+    psmove_shutdown();
     return 0;
 }
 

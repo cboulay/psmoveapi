@@ -27,23 +27,24 @@
  * POSSIBILITY OF SUCH DAMAGE.
  **/
 
+// -- includes -----
 #include "psmove.h"
 #include "psmove_private.h"
 #include "psmove_calibration.h"
 #include "psmove_orientation.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
 #include <ctype.h>
 #include <string.h>
 #include <wchar.h>
-#include <unistd.h>
+#include <stdbool.h>
 #ifdef _MSC_VER
 #include <WinSock2.h>
-#include "gettod.h"
 #else
-#include <sys/time.h>
+#include <unistd.h>
 #endif
 #include <sys/stat.h>
 #include <math.h>
@@ -73,27 +74,14 @@
 #  include <bthsdpdef.h>
 #  include <bluetoothapis.h>
 #  include "platform/psmove_winsupport.h"
-#ifndef PATH_MAX
-#  define PATH_MAX MAX_PATH
-#endif
-#  define ENV_USER_HOME "APPDATA"
-#  define PATH_SEP "\\"
-#else
-#  define ENV_USER_HOME "HOME"
-#  define PATH_SEP "/"
 #endif
 
 #include "daemon/moved_client.h"
 #include "hidapi.h"
 
-#ifdef _MSC_VER
-#define STIN static __inline  // Used in psmove_decode_16bit
-#else
-#define STIN static inline
-#endif
+// -- constants ------
 
-
-/* Begin private definitions */
+#define PATH_MAX 1024
 
 /* Buffer size for writing LEDs and reading sensor data */
 #define PSMOVE_BUFFER_SIZE 49
@@ -115,7 +103,6 @@
 
 /* Minimum time (in milliseconds) between two LED updates (rate limiting) */
 #define PSMOVE_MIN_LED_UPDATE_WAIT_MS 120
-
 
 enum PSMove_Request_Type {
     PSMove_Req_GetInput = 0x01,
@@ -159,6 +146,8 @@ enum PSMove_Sensor {
     Sensor_Gyroscope,
 };
 
+// -- structures ------
+
 typedef struct {
     unsigned char type; /* message type, must be PSMove_Req_SetLEDs */
     unsigned char _zero; /* must be zero */
@@ -169,19 +158,6 @@ typedef struct {
     unsigned char rumble; /* rumble value, 0x00..0xff */
     unsigned char _padding[PSMOVE_BUFFER_SIZE-7]; /* must be zero */
 } PSMove_Data_LEDs;
-
-/* Decode 12-bit signed value (assuming two's complement) */
-#define TWELVE_BIT_SIGNED(x) (((x) & 0x800)?(-(((~(x)) & 0xFFF) + 1)):(x))
-
-/* Decode 16-bit signed value from data pointer and offset */
-STIN int
-psmove_decode_16bit(char *data, int offset)
-{
-    unsigned char low = data[offset] & 0xFF;
-    unsigned char high = (data[offset+1]) & 0xFF;
-    return (low | (high << 8)) - 0x8000;
-}
-
 
 typedef struct {
     unsigned char type; /* message type, must be PSMove_Req_GetInput */
@@ -237,30 +213,6 @@ typedef struct {
     int z;
 } PSMove_3AxisVector;
 
-int
-psmove_3axisvector_min(PSMove_3AxisVector vector)
-{
-    if (vector.x < vector.y && vector.x < vector.z) {
-        return vector.x;
-    } else if (vector.y < vector.z) {
-        return vector.y;
-    } else {
-        return vector.z;
-    }
-}
-
-int
-psmove_3axisvector_max(PSMove_3AxisVector vector)
-{
-    if (vector.x > vector.y && vector.x > vector.z) {
-        return vector.x;
-    } else if (vector.y > vector.z) {
-        return vector.y;
-    } else {
-        return vector.z;
-    }
-}
-
 struct _PSMove {
     /* Device type (hidapi-based or moved-based */
     enum PSMove_Device_Type type;
@@ -271,7 +223,7 @@ struct _PSMove {
     hid_device *handle_addr; // Only used by _WIN32. Needed by Win 8.1 to get BT address.
 
     /* The handle to the moved client */
-    moved_client *client;
+    struct moved_client *client;
     int remote_id;
 
     /* Index (at connection time) - not exposed yet */
@@ -326,17 +278,66 @@ struct _PSMove {
 #endif
 };
 
+// -- macros ------
+
+#ifdef _MSC_VER
+#define STIN static __inline  // Used in psmove_decode_16bit
+#else
+#define STIN static inline
+#endif
+
+/* Decode 12-bit signed value (assuming two's complement) */
+#define TWELVE_BIT_SIGNED(x) (((x) & 0x800)?(-(((~(x)) & 0xFFF) + 1)):(x))
+
+// -- prototypes -----
+
 void
 psmove_load_magnetometer_calibration(PSMove *move);
 
-/* End private definitions */
+// -- globals -----
 
-static moved_client_list *clients;
-static int psmove_local_disabled = 0;
-static int psmove_remote_disabled = 0;
+static bool g_psmovelib_initialized = false;
+static moved_client_list *g_clients;
+static int g_psmove_local_disabled = 0;
+static int g_psmove_remote_disabled = 0;
 
 /* Number of valid, open PSMove* handles "in the wild" */
-static int psmove_num_open_handles = 0;
+static int g_psmove_num_open_handles = 0;
+
+// -- methods ------
+
+/* Decode 16-bit signed value from data pointer and offset */
+STIN int
+psmove_decode_16bit(char *data, int offset)
+{
+    unsigned char low = data[offset] & 0xFF;
+    unsigned char high = (data[offset + 1]) & 0xFF;
+    return (low | (high << 8)) - 0x8000;
+}
+
+int
+psmove_3axisvector_min(PSMove_3AxisVector vector)
+{
+    if (vector.x < vector.y && vector.x < vector.z) {
+        return vector.x;
+    } else if (vector.y < vector.z) {
+        return vector.y;
+    } else {
+        return vector.z;
+    }
+}
+
+int
+psmove_3axisvector_max(PSMove_3AxisVector vector)
+{
+    if (vector.x > vector.y && vector.x > vector.z) {
+        return vector.x;
+    } else if (vector.y > vector.z) {
+        return vector.y;
+    } else {
+        return vector.z;
+    }
+}
 
 /* Private functionality needed by the Linux version */
 #if defined(__linux)
@@ -446,19 +447,30 @@ psmove_init(enum PSMove_Version version)
      * might be called multiple times, even after succeeding once.
      **/
 
-    /* For now, assume future versions will be backwards-compatible */
-    if (version >= PSMOVE_CURRENT_VERSION) {
-        return PSMove_True;
-    } else {
-        return PSMove_False;
+    if (!g_psmovelib_initialized) {
+        /* For now, assume future versions will be backwards-compatible */
+        psmove_return_val_if_fail(version >= PSMOVE_CURRENT_VERSION, PSMove_False);
+        psmove_return_val_if_fail(psmove_time_init(), PSMove_False);
+        psmove_return_val_if_fail(hid_init() == 0, PSMove_False);
+        g_psmovelib_initialized = true;
+    }
+    return PSMove_True;
+}
+
+void
+psmove_shutdown()
+{
+    if (g_psmovelib_initialized) {
+        hid_exit();
+        g_psmovelib_initialized = false;
     }
 }
 
 void
 psmove_set_remote_config(enum PSMove_RemoteConfig config)
 {
-    psmove_remote_disabled = (config == PSMove_OnlyLocal);
-    psmove_local_disabled = (config == PSMove_OnlyRemote);
+    g_psmove_remote_disabled = (config == PSMove_OnlyLocal);
+    g_psmove_local_disabled = (config == PSMove_OnlyRemote);
 }
 
 void
@@ -484,24 +496,24 @@ _psmove_read_data(PSMove *move, unsigned char *data, int length)
 enum PSMove_Bool
 psmove_is_remote(PSMove *move)
 {
-    return move->type == PSMove_MOVED;
+    return (move->type == PSMove_MOVED) ? PSMove_True : PSMove_False;
 }
 
 void
 psmove_reinit()
 {
-    if (psmove_num_open_handles != 0) {
+    if (g_psmove_num_open_handles != 0) {
         psmove_CRITICAL("reinit called with open handles "
                 "(forgot psmove_disconnect?)");
         exit(0);
     }
 
-    if (clients != NULL) {
-        moved_client_list_destroy(clients);
-        clients = NULL;
+    if (g_clients != NULL) {
+        moved_client_list_destroy(g_clients);
+        g_clients = NULL;
     }
 
-    if(!psmove_local_disabled)
+    if(!g_psmove_local_disabled)
         hid_exit();
 }
 
@@ -511,7 +523,7 @@ psmove_count_connected_hidapi()
     struct hid_device_info *devs, *cur_dev;
     int count = 0;
 
-    if (psmove_local_disabled) {
+    if (g_psmove_local_disabled) {
         return 0;
     }
 
@@ -537,7 +549,7 @@ psmove_count_connected_hidapi()
 }
 
 int
-psmove_count_connected_moved(moved_client *client)
+psmove_count_connected_moved(struct moved_client *client)
 {
     psmove_return_val_if_fail(client != NULL, 0);
     return moved_client_send(client, MOVED_REQ_COUNT_CONNECTED, 0, NULL);
@@ -548,12 +560,12 @@ psmove_count_connected()
 {
     int count = psmove_count_connected_hidapi();
 
-    if (clients == NULL && !psmove_remote_disabled) {
-        clients = moved_client_list_open();
+    if (g_clients == NULL && !g_psmove_remote_disabled) {
+        g_clients = moved_client_list_open();
     }
 
     moved_client_list *cur;
-    for (cur=clients; cur != NULL; cur=cur->next) {
+    for (cur = g_clients; cur != NULL; cur = cur->next) {
         count += psmove_count_connected_moved(cur->client);
     }
 
@@ -668,7 +680,7 @@ psmove_connect_internal(wchar_t *serial, char *path, int id)
 #endif
 
     /* Bookkeeping of open handles (for psmove_reinit) */
-    psmove_num_open_handles++;
+    g_psmove_num_open_handles++;
 
     move->calibration = psmove_calibration_new(move);
     move->orientation = psmove_orientation_new(move);
@@ -703,7 +715,7 @@ _psmove_set_auth_challenge(PSMove *move, PSMove_Data_AuthChallenge *challenge)
 
     res = hid_send_feature_report(move->handle, buf, sizeof(buf));
 
-    return (res == sizeof(buf));
+    return (res == sizeof(buf)) ? PSMove_True : PSMove_False;
 }
 
 PSMove_Data_AuthResponse *
@@ -721,7 +733,7 @@ _psmove_get_auth_response(PSMove *move)
     psmove_return_val_if_fail(res == sizeof(buf), NULL);
 
     /* Copy response data into output buffer */
-    PSMove_Data_AuthResponse *output_buf = malloc(sizeof(PSMove_Data_AuthResponse));
+    PSMove_Data_AuthResponse *output_buf = (PSMove_Data_AuthResponse *)malloc(sizeof(PSMove_Data_AuthResponse));
     memcpy(*output_buf, buf + 1, sizeof(*output_buf));
 
     return output_buf;
@@ -755,7 +767,7 @@ _psmove_get_firmware_info(PSMove *move)
 
     psmove_return_val_if_fail(res == expected_res, NULL);
 
-    PSMove_Firmware_Info *info = malloc(sizeof(PSMove_Firmware_Info));
+    PSMove_Firmware_Info *info = (PSMove_Firmware_Info *)malloc(sizeof(PSMove_Firmware_Info));
 
     /* NOTE: Each field in the report is stored in Big-Endian byte order */
     info->version    = (p[0] << 8) | p[1];
@@ -797,11 +809,11 @@ _psmove_set_operation_mode(PSMove *move, enum PSMove_Operation_Mode mode)
     buf[1] = mode_magic_val;
     res = hid_send_feature_report(move->handle, buf, sizeof(buf));
 
-    return (res == sizeof(buf));
+    return (res == sizeof(buf)) ? PSMove_True : PSMove_False;
 }
 
 PSMove *
-psmove_connect_remote_by_id(int id, moved_client *client, int remote_id)
+psmove_connect_remote_by_id(int id, struct moved_client *client, int remote_id)
 {
     PSMove *move = (PSMove*)calloc(1, sizeof(PSMove));
     move->type = PSMove_MOVED;
@@ -821,7 +833,7 @@ psmove_connect_remote_by_id(int id, moved_client *client, int remote_id)
     if (moved_client_send(move->client, MOVED_REQ_SERIAL,
                 move->remote_id, NULL)) {
         /* Retrieve the serial number from the remote host */
-        strncpy(move->serial_number, (char*)move->client->read_response_buf,
+        strncpy(move->serial_number, (char*)moved_client_get_read_response_buffer(move->client),
                 PSMOVE_MAX_SERIAL_LENGTH);
     }
 
@@ -834,7 +846,7 @@ psmove_connect_remote_by_id(int id, moved_client *client, int remote_id)
     psmove_load_magnetometer_calibration(move);
 
     /* Bookkeeping of open handles (for psmove_reinit) */
-    psmove_num_open_handles++;
+    g_psmove_num_open_handles++;
 
     return move;
 }
@@ -846,14 +858,14 @@ psmove_connect_by_id(int id)
 
     if (id >= hidapi_count) {
         /* XXX: check remote controllers */
-        if (clients == NULL && !psmove_remote_disabled) {
-            clients = moved_client_list_open();
+        if (g_clients == NULL && !g_psmove_remote_disabled) {
+            g_clients = moved_client_list_open();
         }
 
         int offset = hidapi_count;
 
         moved_client_list *cur;
-        for (cur=clients; cur != NULL; cur=cur->next) {
+        for (cur=g_clients; cur != NULL; cur=cur->next) {
             int count = psmove_count_connected_moved(cur->client);
             if ((id - offset) < count) {
                 int remote_id = id - offset;
@@ -1145,7 +1157,7 @@ psmove_pair(PSMove *move)
 enum PSMove_Bool
 psmove_pair_custom(PSMove *move, const char *new_host_string)
 {
-    psmove_return_val_if_fail(move != NULL, 0);
+    psmove_return_val_if_fail(move != NULL, PSMove_False);
 
     PSMove_Data_BTAddr new_host;
     PSMove_Data_BTAddr current_host;
@@ -1235,16 +1247,21 @@ _psmove_btaddr_from_string(const char *string, PSMove_Data_BTAddr *dest)
     return 1;
 }
 
+void
+_psmove_btaddr_to_string_in_place(const PSMove_Data_BTAddr addr, const unsigned int string_length, char *out_string)
+{
+    snprintf(out_string, string_length, "%02x:%02x:%02x:%02x:%02x:%02x",
+        (unsigned char)addr[5], (unsigned char)addr[4],
+        (unsigned char)addr[3], (unsigned char)addr[2],
+        (unsigned char)addr[1], (unsigned char)addr[0]);
+}
+
 char *
 _psmove_btaddr_to_string(const PSMove_Data_BTAddr addr)
 {
     int size = 18; /* strlen("aa:bb:cc:dd:ee:ff") + 1 */
     char *result = (char*)malloc(size);
-
-    snprintf(result, size, "%02x:%02x:%02x:%02x:%02x:%02x",
-            (unsigned char) addr[5], (unsigned char) addr[4],
-            (unsigned char) addr[3], (unsigned char) addr[2],
-            (unsigned char) addr[1], (unsigned char) addr[0]);
+    _psmove_btaddr_to_string_in_place(addr, size, result);
 
     return result;
 }
@@ -1294,7 +1311,7 @@ psmove_set_led_pwm_frequency(PSMove *move, unsigned long freq)
 
     res = hid_send_feature_report(move->handle, buf, sizeof(buf));
 
-    return (res == sizeof(buf));
+    return (res == sizeof(buf)) ? PSMove_True : PSMove_False;
 }
 
 void
@@ -1317,7 +1334,7 @@ psmove_update_leds(PSMove *move)
 {
     long timediff_ms;
 
-    psmove_return_val_if_fail(move != NULL, 0);
+    psmove_return_val_if_fail(move != NULL, Update_Failed);
 
     timediff_ms = (psmove_util_get_ticks() - move->last_leds_update);
 
@@ -1370,7 +1387,7 @@ psmove_update_leds(PSMove *move)
             break;
         default:
             psmove_CRITICAL("Unknown device type");
-            return 0;
+            return Update_Failed;
             break;
     }
 }
@@ -1404,8 +1421,9 @@ psmove_poll(PSMove *move)
                  * The input buffer is stored at offset 1 (the first byte
                  * contains the return value of the remote psmove_poll())
                  **/
+                unsigned char *read_response_buffer = moved_client_get_read_response_buffer(move->client);
                 memcpy((unsigned char*)(&(move->input)),
-                        move->client->read_response_buf+1,
+                        read_response_buffer+1,
                         sizeof(move->input));
 
                 /**
@@ -1416,7 +1434,7 @@ psmove_poll(PSMove *move)
                  * See also _psmove_read_data() for how the buffer is filled
                  * on the remote end of the moved protocol connection.
                  **/
-                if (move->client->read_response_buf[0] != 0) {
+                if (read_response_buffer[0] != 0) {
                     res = sizeof(move->input);
                 }
             }
@@ -1629,9 +1647,9 @@ psmove_send_ext_data(PSMove *move, const unsigned char *data, unsigned char leng
 enum PSMove_Battery_Level
 psmove_get_battery(PSMove *move)
 {
-    psmove_return_val_if_fail(move != NULL, 0);
+    psmove_return_val_if_fail(move != NULL, Batt_MIN);
 
-    return move->input.battery;
+    return (enum PSMove_Battery_Level)(move->input.battery);
 }
 
 int
@@ -1681,7 +1699,7 @@ psmove_get_temperature_in_celsius(PSMove *move)
 
     for (i = 0; i < 80; i++) {
         if (temperature_lookup[i] > raw_value) {
-            return i - 10;
+            return (float)(i - 10);
         }
     }
 
@@ -1722,15 +1740,15 @@ psmove_get_half_frame(PSMove *move, enum PSMove_Sensor sensor,
     }
 
     if (x != NULL) {
-        *x = psmove_decode_16bit((void*)&move->input, base + 0);
+        *x = psmove_decode_16bit((char *)(&move->input), base + 0);
     }
 
     if (y != NULL) {
-        *y = psmove_decode_16bit((void*)&move->input, base + 2);
+        *y = psmove_decode_16bit((char *)(&move->input), base + 2);
     }
 
     if (z != NULL) {
-        *z = psmove_decode_16bit((void*)&move->input, base + 4);
+        *z = psmove_decode_16bit((char *)(&move->input), base + 4);
     }
 }
 
@@ -1860,8 +1878,8 @@ psmove_get_magnetometer_vector(PSMove *move,
 enum PSMove_Bool
 psmove_has_calibration(PSMove *move)
 {
-    psmove_return_val_if_fail(move != NULL, 0);
-    return psmove_calibration_supported(move->calibration);
+    psmove_return_val_if_fail(move != NULL, PSMove_False);
+    return (psmove_calibration_supported(move->calibration) != 0) ? PSMove_True : PSMove_False;
 }
 
 void
@@ -1908,8 +1926,8 @@ psmove_enable_orientation(PSMove *move, enum PSMove_Bool enabled)
 enum PSMove_Bool
 psmove_has_orientation(PSMove *move)
 {
-    psmove_return_val_if_fail(move != NULL, 0);
-    psmove_return_val_if_fail(move->orientation != NULL, 0);
+    psmove_return_val_if_fail(move != NULL, PSMove_False);
+    psmove_return_val_if_fail(move->orientation != NULL, PSMove_False);
 
 #if !defined(PSMOVE_WITH_MADGWICK_AHRS)
     psmove_WARNING("Built without Madgwick AHRS - no orientation support");
@@ -1962,7 +1980,7 @@ psmove_get_magnetometer_calibration_filename(PSMove *move)
     psmove_return_val_if_fail(serial != NULL, NULL);
 
     int i;
-    for (i=0; i<strlen(serial); i++) {
+    for (i = 0; i<(int)strlen(serial); i++) {
         if (serial[i] == ':') {
             serial[i] = '_';
         }
@@ -1979,7 +1997,7 @@ psmove_save_magnetometer_calibration(PSMove *move)
 {
     psmove_return_if_fail(move != NULL);
     char *filename = psmove_get_magnetometer_calibration_filename(move);
-    FILE *fp = fopen(filename, "w");
+    FILE *fp = psmove_file_open(filename, "w");
     free(filename);
     psmove_return_if_fail(fp != NULL);
 
@@ -1988,7 +2006,7 @@ psmove_save_magnetometer_calibration(PSMove *move)
     fprintf(fp, "y,%d,%d\n", move->magnetometer_min.y, move->magnetometer_max.y);
     fprintf(fp, "z,%d,%d\n", move->magnetometer_min.z, move->magnetometer_max.z);
 
-    fclose(fp);
+    psmove_file_close(fp);
 }
 
 void
@@ -1997,7 +2015,7 @@ psmove_load_magnetometer_calibration(PSMove *move)
     psmove_return_if_fail(move != NULL);
     psmove_reset_magnetometer_calibration(move);
     char *filename = psmove_get_magnetometer_calibration_filename(move);
-    FILE *fp = fopen(filename, "r");
+    FILE *fp = psmove_file_open(filename, "r");
     free(filename);
 
     if (fp == NULL) {
@@ -2037,13 +2055,13 @@ psmove_load_magnetometer_calibration(PSMove *move)
     move->magnetometer_max.z = i_max;
 
 finish:
-    fclose(fp);
+    psmove_file_close(fp);
 }
 
 int
 psmove_get_magnetometer_calibration_range(PSMove *move)
 {
-    psmove_return_val_if_fail(move != NULL, 0.);
+    psmove_return_val_if_fail(move != NULL, 0);
 
     PSMove_3AxisVector diff = {
         move->magnetometer_max.x - move->magnetometer_min.x,
@@ -2100,156 +2118,24 @@ psmove_disconnect(PSMove *move)
     free(move);
 
     /* Bookkeeping of open handles (for psmove_reinit) */
-    psmove_return_if_fail(psmove_num_open_handles > 0);
-    psmove_num_open_handles--;
-}
-
-long
-psmove_util_get_ticks()
-{
-#ifdef WIN32
-    static LARGE_INTEGER startup_time = { .QuadPart = 0 };
-    static LARGE_INTEGER frequency = { .QuadPart = 0 };
-    LARGE_INTEGER now;
-
-    if (frequency.QuadPart == 0) {
-        psmove_return_val_if_fail(QueryPerformanceFrequency(&frequency), 0);
-    }
-
-    psmove_return_val_if_fail(QueryPerformanceCounter(&now), 0);
-
-    /* The first time this function gets called, we init startup_time */
-    if (startup_time.QuadPart == 0) {
-        startup_time.QuadPart = now.QuadPart;
-    }
-
-    return (long)((now.QuadPart - startup_time.QuadPart) * 1000 /
-            frequency.QuadPart);
-#else
-    static long startup_time = 0;
-    long now;
-    struct timeval tv;
-
-    psmove_return_val_if_fail(gettimeofday(&tv, NULL) == 0, 0);
-    now = (tv.tv_sec * 1000 + tv.tv_usec / 1000);
-
-    /* The first time this function gets called, we init startup_time */
-    if (startup_time == 0) {
-        startup_time = now;
-    }
-
-    return (now - startup_time);
-#endif
-}
-
-const char *
-psmove_util_get_data_dir()
-{
-    static char dir[PATH_MAX];
-
-    if (strlen(dir) == 0) {
-        strncpy(dir, getenv(ENV_USER_HOME), sizeof(dir));
-        strncat(dir, PATH_SEP ".psmoveapi", sizeof(dir));
-    }
-
-    return dir;
-}
-
-char *
-psmove_util_get_file_path(const char *filename)
-{
-    const char *parent = psmove_util_get_data_dir();
-    char *result;
-    struct stat st;
-
-#ifndef _WIN32
-    // if run as root, use system-wide data directory
-    if (geteuid() == 0) {
-        parent = PSMOVE_SYSTEM_DATA_DIR;
-    }
-#endif
-
-    if (stat(filename, &st) == 0) {
-        // File exists in the current working directory, prefer that
-        // to the file in the default data / configuration directory
-        return strdup(filename);
-    }
-
-    if (stat(parent, &st) != 0) {
-#ifdef _WIN32
-        psmove_return_val_if_fail(mkdir(parent) == 0, NULL);
-#else
-        psmove_return_val_if_fail(mkdir(parent, 0777) == 0, NULL);
-#endif
-    }
-
-    result = malloc(strlen(parent) + 1 + strlen(filename) + 1);
-    strcpy(result, parent);
-    strcat(result, PATH_SEP);
-    strcat(result, filename);
-
-    return result;
-}
-
-char *
-psmove_util_get_system_file_path(const char *filename)
-{
-    char *result;
-    int len = strlen(PSMOVE_SYSTEM_DATA_DIR) + 1 + strlen(filename) + 1;
-
-    result = malloc(len);
-    if (result == NULL) {
-        return NULL;
-    }
-
-    snprintf(result, len, "%s%s%s", PSMOVE_SYSTEM_DATA_DIR, PATH_SEP, filename);
-
-    return result;
-}
-
-int
-psmove_util_get_env_int(const char *name)
-{
-    char *env = getenv(name);
-
-    if (env) {
-        char *end;
-        long result = strtol(env, &end, 10);
-
-        if (*end == '\0' && *env != '\0') {
-            return result;
-        }
-    }
-
-    return -1;
-}
-
-char *
-psmove_util_get_env_string(const char *name)
-{
-    char *env = getenv(name);
-
-    if (env) {
-        return strdup(env);
-    }
-
-    return NULL;
+    psmove_return_if_fail(g_psmove_num_open_handles > 0);
+    g_psmove_num_open_handles--;
 }
 
 char *
 _psmove_normalize_btaddr(const char *addr, int lowercase, char separator)
 {
-    int count = strlen(addr);
+    size_t count = strlen(addr);
 
     if (count != 17) {
         psmove_WARNING("Invalid address: '%s'\n", addr);
         return NULL;
     }
 
-    char *result = malloc(count + 1);
+    char *result = (char *)(malloc(count + 1));
     int i;
 
-    for (i=0; i<strlen(addr); i++) {
+    for (i = 0; i<(int)strlen(addr); i++) {
         if (addr[i] >= 'A' && addr[i] <= 'F' && i % 3 != 2) {
             if (lowercase) {
                 result[i] = tolower(addr[i]);
@@ -2275,51 +2161,6 @@ _psmove_normalize_btaddr(const char *addr, int lowercase, char separator)
 
     result[count] = '\0';
     return result;
-}
-
-#if defined(__APPLE__) || defined(_MSC_VER)
-
-#define CLOCK_MONOTONIC 0
-
-static int
-clock_gettime(int unused, struct timespec *ts)
-{
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-
-    ts->tv_sec = tv.tv_sec;
-    ts->tv_nsec = tv.tv_usec * 1000;
-
-    return 0;
-}
-#endif /* __APPLE__ || _MSC_VER */
-
-PSMove_timestamp
-_psmove_timestamp()
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return ts;
-}
-
-PSMove_timestamp
-_psmove_timestamp_diff(PSMove_timestamp a, PSMove_timestamp b)
-{
-    struct timespec ts;
-    if (a.tv_nsec >= b.tv_nsec) {
-        ts.tv_sec = a.tv_sec - b.tv_sec;
-        ts.tv_nsec = a.tv_nsec - b.tv_nsec;
-    } else {
-        ts.tv_sec = a.tv_sec - b.tv_sec - 1;
-        ts.tv_nsec = 1000000000 + a.tv_nsec - b.tv_nsec;
-    }
-    return ts;
-}
-
-double
-_psmove_timestamp_value(PSMove_timestamp ts)
-{
-    return ts.tv_sec + ts.tv_nsec * 0.000000001;
 }
 
 void

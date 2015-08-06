@@ -29,7 +29,6 @@
 
 
 
-#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -53,6 +52,11 @@ void test_succeeds(PSMove *move) {
 
 int main(int argc, char* argv[])
 {
+    if (!psmove_init(PSMOVE_CURRENT_VERSION)) {
+        fprintf(stderr, "PS Move API init failed (wrong version?)\n");
+        exit(1);
+    }
+
     PSMove *move = psmove_connect();
     int i;
 
@@ -89,7 +93,7 @@ int main(int argc, char* argv[])
     test_succeeds(move);
 
     psmove_disconnect(move);
-
+    psmove_shutdown();
     return 0;
 }
 

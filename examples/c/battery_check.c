@@ -26,7 +26,6 @@
  * POSSIBILITY OF SUCH DAMAGE.
  **/
 
-#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -35,7 +34,7 @@
 
 typedef struct
 {
-	int r, g, b;
+    int r, g, b;
 } Color;
 
 Color convert_battery_to_col(enum PSMove_Battery_Level level)
@@ -87,13 +86,14 @@ int main(int argc, char* argv[])
             if(buttons & Btn_PS)
                 running = false;
         }
-        usleep(1000000);
+        psmove_sleep(1);
     }
 
     for(i=0; i<c; i++) {
-    	psmove_disconnect(moves[i]);
+        psmove_disconnect(moves[i]);
     }
 
     free(moves);
+    psmove_shutdown();
     return 0;
 }

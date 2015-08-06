@@ -30,26 +30,16 @@
 #ifndef __PSMOVE_H
 #define __PSMOVE_H
 
+#include "psmove_platform_config.h"
+
+// Include the time functions with the main api
+#include "psmove_time.h"
+
+// Include file i/o functions with the main api
+#include "psmove_file.h"
+
 #ifdef __cplusplus
 extern "C" {
-#endif
-
-#include "psmove_config.h"
-
-#ifdef _WIN32
-#  define ADDCALL __cdecl
-#  if defined(BUILDING_STATIC_LIBRARY)
-#    define ADDAPI
-#  elif defined(USING_STATIC_LIBRARY)
-#    define ADDAPI
-#  elif defined(BUILDING_SHARED_LIBRARY)
-#    define ADDAPI __declspec(dllexport)
-#  else /* using shared library */
-#    define ADDAPI __declspec(dllimport)
-#  endif
-#else
-#  define ADDAPI
-#  define ADDCALL
 #endif
 
 /*! Connection type for controllers.
@@ -217,6 +207,17 @@ enum PSMove_Version {
  **/
 ADDAPI enum PSMove_Bool
 ADDCALL psmove_init(enum PSMove_Version version);
+    
+    
+/**
+ * \brief Shutdown the library.
+ *
+ * This library call should be used at the end of each application using
+ * the PS Move API to shut down its dependent libraries.
+ *
+ **/
+ADDAPI void
+ADDCALL psmove_shutdown();
 
 /**
  * \brief Enable or disable the usage of local or remote devices
@@ -1097,94 +1098,6 @@ ADDCALL psmove_disconnect(PSMove *move);
  **/
 ADDAPI void
 ADDCALL psmove_reinit();
-
-/**
- * \brief Get milliseconds since first library use.
- *
- * This function is used throughout the library to take care of timing and
- * measurement. It implements a cross-platform way of getting the current
- * time, relative to library use.
- *
- * \return Time (in ms) since first library use.
- **/
-ADDAPI long
-ADDCALL psmove_util_get_ticks();
-
-/**
- * \brief Get local save directory for settings.
- *
- * The local save directory is a PS Move API-specific directory where the
- * library and its components will store files such as calibration data,
- * tracker state and configuration files.
- *
- * \return The local save directory for settings.
- *         The returned value is reserved in static memory - it must not be freed!
- **/
-ADDAPI const char *
-ADDCALL psmove_util_get_data_dir();
-
-/**
- * \brief Get a filename path in the local save directory.
- *
- * This is a convenience function wrapping psmove_util_get_data_dir()
- * and will give the absolute path of the given filename.
- *
- * The data directory will be created in case it doesn't exist yet.
- *
- * \param filename The basename of the file (e.g. \c myfile.txt)
- *
- * \return The absolute filename to the file. The caller must
- *         free() the result when it is not needed anymore.
- * \return On error, \c NULL is returned.
- **/
-ADDAPI char *
-ADDCALL psmove_util_get_file_path(const char *filename);
-
-/**
- * \brief Get a filename path in the system save directory.
- *
- * This is a convenience function, which gives the absolute path for
- * a file stored in system-wide data directory.
- *
- * The data directory will NOT be created in case it doesn't exist yet.
- *
- * \param filename The basename of the file (e.g. \c myfile.txt)
- *
- * \return The absolute filename to the file. The caller must
- *         free() the result when it is not needed anymore.
- * \return On error, \c NULL is returned.
- **/
-ADDAPI char *
-ADDCALL psmove_util_get_system_file_path(const char *filename);
-
-/**
- * \brief Get an integer from an environment variable
- *
- * Utility function used to get configuration from environment
- * variables.
- *
- * \param name The name of the environment variable
- *
- * \return The integer value of the environment variable, or -1 if
- *         the variable is not set or could not be parsed as integer.
- **/
-ADDAPI int
-ADDCALL psmove_util_get_env_int(const char *name);
-
-/**
- * \brief Get a string from an environment variable
- *
- * Utility function used to get configuration from environment
- * variables.
- *
- * \param name The name of the environment variable
- *
- * \return The string value of the environment variable, or NULL if the
- *         variable is not set. The caller must free() the result when
- *         it is not needed anymore.
- **/
-ADDAPI char *
-ADDCALL psmove_util_get_env_string(const char *name);
 
 
 #ifdef __cplusplus

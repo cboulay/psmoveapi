@@ -45,18 +45,18 @@ ELSE()
     set(MSVC_LIBS)
     set(MSVC_SRCS)
     IF(MSVC)
-        list(APPEND MSVC_INCLUDES ${CMAKE_CURRENT_LIST_DIR}/../external/pthreads-w32/include ${CMAKE_CURRENT_LIST_DIR}/../external/msvc-support)
-        list(APPEND MSVC_SRCS ${CMAKE_CURRENT_LIST_DIR}/../external/msvc-support/getopt.c ${CMAKE_CURRENT_LIST_DIR}/../external/msvc-support/unistd.c)
-        IF(CMAKE_SIZEOF_VOID_P EQUAL 8)
-            find_library(PThreadLib
-                NAMES pthreadVC2
-                PATHS ${CMAKE_CURRENT_LIST_DIR}/../external/pthreads-w32/lib/x64)
-        ELSE()
-            find_library(PThreadLib
-                NAMES pthreadVC2
-                PATHS ${CMAKE_CURRENT_LIST_DIR}/../external/pthreads-w32/lib/x86)
-        ENDIF()
-        list(APPEND MSVC_LIBS ${PThreadLib})
+        #list(APPEND MSVC_INCLUDES ${CMAKE_CURRENT_LIST_DIR}/../external/pthreads-w32/include ${CMAKE_CURRENT_LIST_DIR}/../external/msvc-support)
+        #list(APPEND MSVC_SRCS ${CMAKE_CURRENT_LIST_DIR}/../external/msvc-support/getopt.c ${CMAKE_CURRENT_LIST_DIR}/../external/msvc-support/unistd.c)
+        #IF(CMAKE_SIZEOF_VOID_P EQUAL 8)
+        #    find_library(PThreadLib
+        #        NAMES pthreadVC2
+        #        PATHS ${CMAKE_CURRENT_LIST_DIR}/../external/pthreads-w32/lib/x64)
+        #ELSE()
+        #    find_library(PThreadLib
+        #        NAMES pthreadVC2
+        #        PATHS ${CMAKE_CURRENT_LIST_DIR}/../external/pthreads-w32/lib/x86)
+        #ENDIF()
+        #list(APPEND MSVC_LIBS ${PThreadLib})
     ENDIF(MSVC)
 ENDIF()
 

@@ -29,7 +29,6 @@
 
 
 
-#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -117,6 +116,11 @@ setup(struct TestContext *context)
 
     assert(context->tracker);
 
+    if (!psmove_init(PSMOVE_CURRENT_VERSION)) {
+        fprintf(stderr, "PS Move API init failed (wrong version?)\n");
+        exit(1);
+    }
+
     context->move = psmove_connect();
     assert(context->move);
 
@@ -136,6 +140,7 @@ teardown(struct TestContext *context)
 {
     psmove_tracker_disable(context->tracker, context->move);
     psmove_disconnect(context->move);
+    psmove_shutdown();
 }
 
 void
@@ -157,7 +162,7 @@ get_timestamps(struct TestContext *context, struct TrackingTimestamps *ts)
             &(ts->grab),
             &(ts->retrieve),
             &(ts->converted));
-    ts->tracked = _psmove_timestamp();
+    ts->tracked = psmove_timestamp();
 }
 
 void
@@ -196,7 +201,7 @@ float
 print_timestamp(struct TestContext *context,
         const char *msg, PSMove_timestamp ts, int frame)
 {
-    float diff = _psmove_timestamp_value(_psmove_timestamp_diff(
+    float diff = (float)psmove_timestamp_value(psmove_timestamp_diff(
                 ts, context->tracking_1_found));
 
     printf("%-25s %.10f s @ frame #%d\n", msg, diff, frame);
@@ -209,10 +214,10 @@ print_timestamps(struct TestContext *context,
         const char *msg, struct TrackingTimestamps ts, int frame,
         float *grab, float *tracked)
 {
-    float grab_diff = _psmove_timestamp_value(_psmove_timestamp_diff(
+    float grab_diff = (float)psmove_timestamp_value(psmove_timestamp_diff(
                 ts.grab, context->tracking_1_found));
 
-    float tracked_diff = _psmove_timestamp_value(_psmove_timestamp_diff(
+    float tracked_diff = (float)psmove_timestamp_value(psmove_timestamp_diff(
                 ts.tracked, context->tracking_1_found));
 
     printf("%-25s %.10f s @ frame #%d (grab time)\n", msg, grab_diff, frame);
@@ -314,7 +319,7 @@ main(int argc, char *argv[])
 
     PSMoveTracker *tracker = psmove_tracker_new();
 
-    FILE *csv = fopen("test_end2end_latency.csv", "w");
+    FILE *csv = psmove_file_open("test_end2end_latency.csv", "w");
     assert(csv != NULL);
 
     fprintf(csv, "run,stable,ledsoff,lostgrab,losttrack,loststable,"
@@ -349,7 +354,7 @@ main(int argc, char *argv[])
                         if (context.counter < STABLE_FRAMES_COUNT) {
                             if (context.counter == 0) {
                                 get_position(&context, &(context.tracking_1_position));
-                                context.tracking_1_found = _psmove_timestamp();
+                                context.tracking_1_found = psmove_timestamp();
                                 context.tracking_1_frame = context.frame;
                             }
                             context.counter++;
@@ -357,10 +362,10 @@ main(int argc, char *argv[])
                             //psmove_tracker_annotate(context.tracker);
                             //save(iteration, 1, &context);
                             get_position(&context, &(context.tracking_1_position_stable));
-                            context.tracking_1_stable = _psmove_timestamp();
+                            context.tracking_1_stable = psmove_timestamp();
 
                             switch_leds_off(&context);
-                            context.tracking_2_leds_off = _psmove_timestamp();
+                            context.tracking_2_leds_off = psmove_timestamp();
                             context.tracking_2_frame = context.frame;
 
                             context.counter = 0;
@@ -380,10 +385,10 @@ main(int argc, char *argv[])
                             }
                             context.counter++;
                         } else {
-                            context.tracking_3_stable = _psmove_timestamp();
+                            context.tracking_3_stable = psmove_timestamp();
 
                             switch_leds_on(&context);
-                            context.tracking_4_leds_on = _psmove_timestamp();
+                            context.tracking_4_leds_on = psmove_timestamp();
                             context.tracking_4_frame = context.frame;
 
                             context.counter = 0;
@@ -407,7 +412,7 @@ main(int argc, char *argv[])
                             //psmove_tracker_annotate(context.tracker);
                             //save(iteration, 0, &context);
                             get_position(&context, &(context.tracking_5_position_stable));
-                            context.tracking_5_stable = _psmove_timestamp();
+                            context.tracking_5_stable = psmove_timestamp();
 
                             context.state = TEST_FINISHED;
                             printf("Test finished.\n");
@@ -428,11 +433,11 @@ main(int argc, char *argv[])
         summary(iteration, &context, csv);
         teardown(&context);
 
-        usleep(500000);
+        psmove_usleep(500000);
     }
 
     psmove_tracker_free(tracker);
-    fclose(csv);
+    psmove_file_close(csv);
 
     return 0;
 }

@@ -5,8 +5,6 @@ Requirements
   http://www.visualstudio.com/en-us/news/vs2013-community-vs.aspx
 - CMake
   http://www.cmake.org/cmake/resources/software.html
-- OpenCV
-  http://sourceforge.net/projects/opencvlibrary/files/opencv-win/
 - Git
   http://code.google.com/p/msysgit/
 
@@ -15,6 +13,7 @@ Requirements
     `cd psmoveapi`
     
 2. Build libusb-1.0
+    Optional - Only required if you are building the positional tracker.
     Open psmoveapi\external\libusb-1.0\msvc\libusb_2013.sln
     Change the target to Release x64 (at the top of the Visual Studio window).
     Right-click on libusb-1.0 (static) and select Properties.
@@ -25,15 +24,30 @@ Requirements
     Right-click on libusb-1.0 (static) and Build.
     
 3. OpenCV
+    Optional - Only required if you are building the positional tracker.
     Still in `psmoveapi/external`
-    git clone --depth 1 --branch 2.4.11 git://github.com/Itseez/opencv.git
+    `git clone --depth 1 --branch 2.4.11 git://github.com/Itseez/opencv.git`
     `cd opencv`
     `mkdir build`
     `cd build`
-    `cmake .. -G "Visual Studio 12 Win64" -DBUILD_SHARED_LIBS=0 -DBUILD_WITH_STATIC_CRT=OFF -DBUILD_PERF_TESTS=OFF -DBUILD_TESTS=OFF -DBUILD_DOCS=OFF -DBUILD_opencv_apps=OFF -DBUILD_opencv_flann=ON -DBUILD_opencv_features2d=ON -DBUILD_opencv_objdetect=OFF -DBUILD_opencv_photo=OFF -DBUILD_opencv_ts=OFF -DBUILD_opencv_ml=OFF -DBUILD_opencv_video=OFF -DBUILD_opencv_java=OFF -DWITH_OPENEXR=OFF -DWITH_FFMPEG=OFF -DWITH_JASPER=OFF -DWITH_TIFF=OFF`
+    `cmake .. -G "Visual Studio 12 Win64" -DBUILD_SHARED_LIBS=OFF -DBUILD_WITH_STATIC_CRT=OFF -DBUILD_PERF_TESTS=OFF -DBUILD_TESTS=OFF -DBUILD_DOCS=OFF -DBUILD_opencv_apps=OFF -DBUILD_opencv_calib3d=ON -DBUILD_opencv_flann=ON -DBUILD_opencv_features2d=ON -DBUILD_opencv_objdetect=OFF -DBUILD_opencv_photo=OFF -DBUILD_opencv_ts=OFF -DBUILD_opencv_ml=OFF -DBUILD_opencv_video=OFF -DBUILD_opencv_java=OFF -DWITH_OPENEXR=OFF -DWITH_FFMPEG=OFF -DWITH_JASPER=OFF -DWITH_TIFF=OFF`
 
     Open the solution in psmoveapi\external\opencv\build\OpenCV.sln
     Change the target to Release (at the top of the Visual Studio window).
+    Build the solution (Press F7).
+    
+    Note: OpenCV 2.4.11 is required only for MSVC builds of the psmoveapi; Linux and Mac builds of the psmoveapi require OpenCV 3.
+    
+4. SDL2
+    Optional - Only required if you are building the OpenGL examples.
+    Still in `psmoveapi/external`
+    `cd SDL2`
+    `mkdir build`
+    `cd build`
+    `cmake .. -G "Visual Studio 12 Win64" -DDIRECTX=OFF`
+    
+    Open the solution (psmoveapi\external\SDL2\build\SDL2.sln)
+    Change the target to Release (at the top of the VS window).
     Build the solution (Press F7).
 
 4. Build psmoveapi
@@ -43,7 +57,7 @@ Requirements
     `cd ..\..\..`
     `mkdir build `
     `cd build`
-    `cmake .. -G "Visual Studio 12 Win64" -DPSMOVE_USE_MADGWICK_AHRS=1 -DPSMOVE_USE_PS3EYE_DRIVER=1`
+    `cmake .. -G "Visual Studio 12 Win64" -DPSMOVE_USE_MADGWICK_AHRS=1 -DPSMOVE_USE_PS3EYE_DRIVER=1 -DPSMOVE_BUILD_OPENGL_EXAMPLES=ON -DPSMOVE_BUILD_TUIO_SERVER=ON`
     #`cmake .. -G "Visual Studio 12 Win64" -DPSMOVE_USE_MADGWICK_AHRS=1 -DPSMOVE_USE_PS3EYE_DRIVER=1 -DPSMOVE_USE_TRACKER_TRACE=ON -DPSMOVE_USE_DEBUG=ON`
 
     Open the `build\Project.sln` solution file.

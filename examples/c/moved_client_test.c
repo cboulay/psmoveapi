@@ -27,12 +27,12 @@
  * POSSIBILITY OF SUCH DAMAGE.
  **/
 
-
+#include <stdio.h>
 #include "../../src/daemon/moved_client.h"
 
 int main(int argc, char *argv[])
 {
-    moved_client *client = moved_client_create("127.0.0.1");
+    struct moved_client *client = moved_client_create("127.0.0.1");
     int connected = moved_client_send(client, MOVED_REQ_COUNT_CONNECTED, 0, NULL);
     int i;
 
@@ -46,8 +46,9 @@ int main(int argc, char *argv[])
 
     if (moved_client_send(client, MOVED_REQ_READ, 0, NULL)) {
         printf("====================\n");
+        unsigned char *read_response_buf = moved_client_get_read_response_buffer(client);
         for (i=0; i<MOVED_SIZE_READ_RESPONSE; i++) {
-            printf("%02x ", client->read_response_buf[i]);
+            printf("%02x ", read_response_buf[i]);
         }
         printf("\n====================\n");
     }

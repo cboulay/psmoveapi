@@ -27,8 +27,9 @@
  * POSSIBILITY OF SUCH DAMAGE.
  **/
 
-
+#ifndef _MSC_VER
 #include <unistd.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -104,7 +105,7 @@ psmove_orientation_update(PSMoveOrientation *orientation)
     long now = psmove_util_get_ticks();
     if (now - orientation->sample_freq_measure_start >= 1000) {
         float measured = ((float)orientation->sample_freq_measure_count) /
-            ((float)(now-orientation->sample_freq_measure_start))*1000.;
+            ((float)(now-orientation->sample_freq_measure_start))*1000.f;
         psmove_DEBUG("Measured sample_freq: %f\n", measured);
 
         orientation->sample_freq = measured;
@@ -125,13 +126,13 @@ psmove_orientation_update(PSMoveOrientation *orientation)
     float q2 = orientation->quaternion[2];
     float q3 = orientation->quaternion[3];
 
-    for (frame=0; frame<2; frame++) {
-        psmove_get_accelerometer_frame(orientation->move, frame,
+    for (frame = 0; frame<2; frame++) {
+        psmove_get_accelerometer_frame(orientation->move, (enum PSMove_Frame)frame,
                 &orientation->output[0],
                 &orientation->output[1],
                 &orientation->output[2]);
 
-        psmove_get_gyroscope_frame(orientation->move, frame,
+        psmove_get_gyroscope_frame(orientation->move, (enum PSMove_Frame)frame,
                 &orientation->output[3],
                 &orientation->output[4],
                 &orientation->output[5]);
@@ -241,10 +242,10 @@ psmove_orientation_reset_quaternion(PSMoveOrientation *orientation)
      **/
     //double length = sqrt(q0*q0 + q1*q1 + q2*q2 + q3*q3);
     double length = sqrt(q0*q0 + q3*q3);
-    orientation->reset_quaternion[0] = q0 / length;
+    orientation->reset_quaternion[0] = (float)(q0 / length);
     orientation->reset_quaternion[1] = 0; // -q1 / length;
     orientation->reset_quaternion[2] = 0; // -q2 / length;
-    orientation->reset_quaternion[3] = -q3 / length;
+    orientation->reset_quaternion[3] = (float)(-q3 / length);
 }
 
 void

@@ -33,13 +33,17 @@
 
 #include "psmove.h"
 
-#ifdef WIN32
+#ifdef _WIN32
 #    include <windows.h>
 #endif
 
 #include "opencv2/core/core_c.h"
 #include "opencv2/imgproc/imgproc_c.h"
-#include "opencv2/calib3d/calib3d_c.h"
+#ifdef _MSC_VER // and OpenCV 2.4.11. Other compilers work with OpenCV 3
+    #include "opencv2/calib3d/calib3d.hpp"
+#else
+    #include "opencv2/calib3d/calib3d_c.h"
+#endif
 #include "opencv2/highgui/highgui_c.h"
 
 #include "psmove_tracker.h"
@@ -62,7 +66,13 @@ void put_text(IplImage* img, const char* text) {
 }
 
 int main(int arg, char** args) {
-    int board_n = PATTERN_W * PATTERN_H;
+    
+    if (!psmove_init(PSMOVE_CURRENT_VERSION)) {
+        fprintf(stderr, "PS Move API init failed (wrong version?)\n");
+        exit(1);
+    }
+    
+    const int board_n = PATTERN_W * PATTERN_H;
     int user_canceled = 0;
     CvSize board_sz = cvSize(PATTERN_W, PATTERN_H);
 
@@ -76,7 +86,7 @@ int main(int arg, char** args) {
     CvMat* intrinsic_matrix = cvCreateMat(3, 3, CV_32FC1);
     CvMat* distortion_coeffs = cvCreateMat(5, 1, CV_32FC1);
     IplImage *image;
-
+    
     PSMoveTracker* tracker = psmove_tracker_new();
     psmove_tracker_set_exposure(tracker, Exposure_HIGH);
 
@@ -139,8 +149,8 @@ int main(int arg, char** args) {
                 for (i = step, j = 0; j < board_n; ++i, ++j) {
                     CV_MAT_ELEM( *image_points, float, i, 0 ) = corners[j].x;
                     CV_MAT_ELEM( *image_points, float, i, 1 ) = corners[j].y;
-                    CV_MAT_ELEM(*object_points, float, i, 0) = j / PATTERN_W;
-                    CV_MAT_ELEM(*object_points, float, i, 1) = j % PATTERN_W;
+                    CV_MAT_ELEM(*object_points, float, i, 0) = (float)j / (float)PATTERN_W;
+                    CV_MAT_ELEM(*object_points, float, i, 1) = (float)(j % PATTERN_W);
                     CV_MAT_ELEM( *object_points, float, i, 2 ) = 0.0f;
                 }
                 CV_MAT_ELEM( *point_counts, int, successes, 0 ) = board_n;
@@ -249,6 +259,7 @@ int main(int arg, char** args) {
 
     free(intrinsics_xml);
     free(distortion_xml);
+    psmove_shutdown();
 
     return 0;
 }

@@ -58,7 +58,7 @@ tracker_trace_file()
 {
     if (!tracker_trace.fp) {
         char *filename = psmove_util_get_file_path("debug.js");
-        tracker_trace.fp = fopen(filename, "w");
+        tracker_trace.fp = psmove_file_open(filename, "w");
         free(filename);
     }
 
@@ -76,7 +76,7 @@ psmove_html_trace_clear()
 {
     tracker_trace.img_count = 0;
     if (tracker_trace.fp) {
-        fclose(tracker_trace.fp);
+        psmove_file_close(tracker_trace.fp);
         tracker_trace.fp = NULL;
     }
 
