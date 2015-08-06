@@ -30,7 +30,6 @@
 #include <stdio.h>
 
 #include <time.h>
-#include <unistd.h>
 #include <assert.h>
 
 #include "opencv2/core/core_c.h"
@@ -61,6 +60,11 @@ save(void *image, int distance)
 int
 main(int arg, char** args)
 {
+    if (!psmove_init(PSMOVE_CURRENT_VERSION)) {
+        fprintf(stderr, "PS Move API init failed (wrong version?)\n");
+        exit(1);
+    }
+
     measurement measurements[MEASUREMENTS];
     float distance = MEASUREMENTS_CM_START;
     int pos = 0;
@@ -111,18 +115,18 @@ main(int arg, char** args)
     }
 
     int i;
-    FILE *fp = fopen("distance.csv", "w");
+    FILE *fp = psmove_file_open("distance.csv", "w");
     fprintf(fp, "distance,radius\n");
     for (i=0; i<pos; i++) {
         fprintf(fp, "%.5f,%.5f\n",
                 measurements[i].distance_cm,
                 measurements[i].radius_px);
     }
-    fclose(fp);
+    psmove_file_close(fp);
 
     psmove_tracker_free(tracker);
     psmove_disconnect(move);
-
+    psmove_shutdown();
     return 0;
 }
 

@@ -123,7 +123,7 @@ int main(int argc, char *argv[])
     }
 
     psmove_disconnect(move);
-
+    psmove_shutdown();
     return 0;
 }
 

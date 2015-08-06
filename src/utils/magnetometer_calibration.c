@@ -28,6 +28,7 @@
  **/
 
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "psmove.h"
 
@@ -36,6 +37,11 @@
 int
 main(int arg, char** args)
 {
+    if (!psmove_init(PSMOVE_CURRENT_VERSION)) {
+        fprintf(stderr, "PS Move API init failed (wrong version?)\n");
+        exit(1);
+    }
+
     int i;
     int count = psmove_count_connected();
     for (i=0; i<count; i++) {
@@ -65,7 +71,7 @@ main(int arg, char** args)
                     } else if (percentage < 0) {
                         percentage = 0;
                     }
-                    psmove_set_leds(move, 2.5 * (100 - percentage), 2.5 * percentage, 0);
+                    psmove_set_leds(move, (255 * (100 - percentage))/100, (255 * percentage)/100, 0);
                     psmove_update_leds(move);
 
                     if (pressed & Btn_MOVE) {
@@ -88,7 +94,7 @@ main(int arg, char** args)
         printf("\nFinished PS Move #%d\n", i);
         psmove_disconnect(move);
     }
-
+    psmove_shutdown();
     return 0;
 }
 

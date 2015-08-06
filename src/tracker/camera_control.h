@@ -29,34 +29,34 @@
 #ifndef CAMERA_CONTROL_H_
 #define CAMERA_CONTROL_H_
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include "psmove.h"
 #include "../psmove_private.h"
 #include "opencv2/core/core_c.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct _CameraControl;
 typedef struct _CameraControl CameraControl;
 
-CameraControl *
-camera_control_new(int cameraID);
+ADDAPI CameraControl *
+ADDCALL camera_control_new(int cameraID);
 
-void
-camera_control_read_calibration(CameraControl* cc,
+ADDAPI void
+ADDCALL camera_control_read_calibration(CameraControl* cc,
         char* intrinsicsFile, char* distortionFile);
 
-void
-camera_control_set_deinterlace(CameraControl *cc,
+ADDAPI void
+ADDCALL camera_control_set_deinterlace(CameraControl *cc,
         enum PSMove_Bool enabled);
 
-IplImage *
-camera_control_query_frame(CameraControl* cc,
+ADDAPI IplImage *
+ADDCALL camera_control_query_frame(CameraControl* cc,
         PSMove_timestamp *ts_grab, PSMove_timestamp *ts_retrieve);
 
-void
-camera_control_delete(CameraControl* cc);
+ADDAPI void
+ADDCALL camera_control_delete(CameraControl* cc);
 
 
 
@@ -84,18 +84,19 @@ camera_control_delete(CameraControl* cc);
  * contrast   - value range [0-0xFFFF]
  * brightness - value range [0-0xFFFF]
  **/
-void
-camera_control_set_parameters(CameraControl* cc,
+ADDAPI void
+ADDCALL camera_control_set_parameters(CameraControl* cc,
         int autoE, int autoG, int autoWB,
         int exposure, int gain,
         int wbRed, int wbGreen, int wbBlue,
         int contrast, int brightness);
 
-void
-camera_control_backup_system_settings(CameraControl* cc,
+ADDAPI void
+ADDCALL camera_control_backup_system_settings(CameraControl* cc,
         const char* file);
-void
-camera_control_restore_system_settings(CameraControl* cc,
+
+ADDAPI void
+ADDCALL camera_control_restore_system_settings(CameraControl* cc,
         const char* file);
 
 #ifdef __cplusplus

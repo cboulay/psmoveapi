@@ -29,7 +29,7 @@
 #ifndef TRACKER_TRACE_H_
 #define TRACKER_TRACE_H_
 
-#include "psmove_config.h"
+#include "psmove_platform_config.h"
 
 #include "opencv2/core/core_c.h"
 

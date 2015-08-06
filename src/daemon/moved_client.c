@@ -27,13 +27,40 @@
  * POSSIBILITY OF SUCH DAMAGE.
  **/
 
+#ifdef _WIN32
+#  include <winsock2.h>
+#  include <ws2tcpip.h>
+#else
+#  include <arpa/inet.h>
+#  include <netinet/in.h>
+#  include <netdb.h>
+#  include <sys/socket.h>
+#endif
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/types.h>
+#include <assert.h>
+#include <string.h>
+//#include <unistd.h>
+#include <errno.h>
 
 #include "psmove.h"
 #include "../psmove_private.h"
 #include "moved_client.h"
 
+struct moved_client {
+    char *hostname;
+
+    int socket;
+    struct sockaddr_in moved_addr;
+
+    unsigned char request_buf[MOVED_SIZE_REQUEST];
+    unsigned char read_response_buf[MOVED_SIZE_READ_RESPONSE];
+};
+
 moved_client_list *
-moved_client_list_insert(moved_client_list *list, moved_client *client)
+moved_client_list_insert(moved_client_list *list, struct moved_client *client)
 {
     moved_client_list *result = (moved_client_list*)calloc(1,
             sizeof(moved_client_list));
@@ -49,11 +76,10 @@ moved_client_list_open()
 {
     moved_client_list *result = NULL;
     char hostname[255];
-    FILE *fp;
 
     char *filename = psmove_util_get_file_path(MOVED_HOSTS_LIST_FILE);
 
-    fp = fopen(filename, "r");
+    FILE *fp = psmove_file_open(filename, "r");
     if (fp != NULL) {
         while (fgets(hostname, sizeof(hostname), fp) != NULL) {
             char *end = hostname + strlen(hostname) - 1;
@@ -65,7 +91,7 @@ moved_client_list_open()
             result = moved_client_list_insert(result,
                     moved_client_create(hostname));
         }
-        fclose(fp);
+        psmove_file_close(fp);
     }
     free(filename);
 
@@ -89,7 +115,7 @@ moved_client_list_destroy(moved_client_list *client_list)
     }
 }
 
-moved_client *
+struct moved_client *
 moved_client_create(const char *hostname)
 {
 #ifdef _WIN32
@@ -103,7 +129,7 @@ moved_client_create(const char *hostname)
     }
 #endif
 
-    moved_client *client = (moved_client*)calloc(1, sizeof(moved_client));
+    struct moved_client *client = (struct moved_client*)calloc(1, sizeof(struct moved_client));
 
     client->hostname = strdup(hostname);
 
@@ -125,7 +151,7 @@ moved_client_create(const char *hostname)
     };
 #endif
     assert(setsockopt(client->socket, SOL_SOCKET, SO_RCVTIMEO,
-                &receive_timeout, sizeof(receive_timeout)) == 0);
+                (const char *)(&receive_timeout), sizeof(receive_timeout)) == 0);
 
     client->moved_addr.sin_family = AF_INET;
     client->moved_addr.sin_port = htons(MOVED_UDP_PORT);
@@ -140,7 +166,7 @@ moved_client_create(const char *hostname)
 }
 
 int
-moved_client_send(moved_client *client, char req, char id, const unsigned char *data)
+moved_client_send(struct moved_client *client, char req, char id, const unsigned char *data)
 {
     int retry_count = 0;
 
@@ -152,14 +178,14 @@ moved_client_send(moved_client *client, char req, char id, const unsigned char *
     }
 
     while (retry_count < MOVED_MAX_RETRIES) {
-        if (sendto(client->socket, client->request_buf,
+        if (sendto(client->socket, (const char *)(client->request_buf),
                     sizeof(client->request_buf), 0,
                     (struct sockaddr *)&(client->moved_addr),
                     sizeof(client->moved_addr)) >= 0)
         {
             switch (req) {
                 case MOVED_REQ_COUNT_CONNECTED:
-                    if (recv(client->socket, client->read_response_buf,
+                    if (recv(client->socket, (char *)(client->read_response_buf),
                                 sizeof(client->read_response_buf), 0) == -1) {
                         retry_count++;
                         continue;
@@ -168,7 +194,7 @@ moved_client_send(moved_client *client, char req, char id, const unsigned char *
                     break;
                 case MOVED_REQ_READ:
                 case MOVED_REQ_SERIAL:
-                    if (recv(client->socket, client->read_response_buf,
+                    if (recv(client->socket, (char *)(client->read_response_buf),
                                 sizeof(client->read_response_buf), 0) == -1) {
                         retry_count++;
                         continue;
@@ -204,8 +230,14 @@ moved_client_send(moved_client *client, char req, char id, const unsigned char *
     return 0;
 }
 
+unsigned char *
+moved_client_get_read_response_buffer(struct moved_client *client)
+{
+    return client->read_response_buf;
+}
+
 void
-moved_client_destroy(moved_client *client)
+moved_client_destroy(struct moved_client *client)
 {
     close(client->socket);
     free(client);

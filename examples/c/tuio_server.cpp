@@ -30,7 +30,6 @@
 #include <stdio.h>
 
 #include <time.h>
-#include <unistd.h>
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
@@ -249,7 +248,11 @@ TcpEventSender::TcpEventSender(const char *target, int port)
 TcpEventSender::~TcpEventSender()
 {
     SOCKET_PRINTF(m_socket, "bye\n");
+#ifdef _WIN32
+    closesocket(m_socket);
+#else
     close(m_socket);
+#endif
 }
 
 void
@@ -443,6 +446,10 @@ on_mouse(int event, int x, int y, int flags, void *param)
 
 int
 main(int argc, const char **argv) {
+    if (!psmove_init(PSMOVE_CURRENT_VERSION)) {
+        fprintf(stderr, "PS Move API init failed (wrong version?)\n");
+        exit(1);
+    }
     int count = psmove_count_connected();
 
     if (count == 0) {
@@ -491,8 +498,9 @@ main(int argc, const char **argv) {
     if (port) {
         tuio_server = new TUIO::TuioServer(hostname, port);
     }
-    TUIO::TuioCursor *cursors[count];
-    PSMove* moves[count];
+
+    TUIO::TuioCursor **cursors = (TUIO::TuioCursor **)calloc(count, sizeof(TUIO::TuioCursor *));
+    PSMove **moves = (PSMove **)calloc(count, sizeof(PSMove *));
 
     if (tuio_server) {
         tuio_server->enableFullUpdate();
@@ -712,7 +720,10 @@ main(int argc, const char **argv) {
         delete tuio_server;
     }
     psmove_tracker_free(tracker);
-
+    free(cursors);
+    free(moves);
+    psmove_shutdown();
+    
     return 0;
 }
 

@@ -29,7 +29,6 @@
 
 
 
-#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -68,7 +67,7 @@ void test_read_performance(PSMove *move, enum TestMode mode) {
 
     for (round=0; round<max_rounds; round++) {
         long packet_loss = 0;
-        PSMove_timestamp ts_started = _psmove_timestamp();
+        PSMove_timestamp ts_started = psmove_timestamp();
         long reads = 0;
         int old_sequence = -1, sequence;
 
@@ -90,10 +89,10 @@ void test_read_performance(PSMove *move, enum TestMode mode) {
 
             reads++;
         }
-        PSMove_timestamp ts_finished = _psmove_timestamp();
-        float diff = _psmove_timestamp_value(_psmove_timestamp_diff(ts_finished, ts_started));
+        PSMove_timestamp ts_finished = psmove_timestamp();
+        float diff = (float)psmove_timestamp_value(psmove_timestamp_diff(ts_finished, ts_started));
 
-        double reads_per_second = (double)reads / diff;
+        float reads_per_second = (float)reads / diff;
         printf("%ld reads in %.2f ms = %.5f reads/sec "
                 "(%ldx seq jump = %.2f %%)\n",
                 reads, diff*1000., reads_per_second, packet_loss,
@@ -114,6 +113,12 @@ void test_read_performance(PSMove *move, enum TestMode mode) {
 
 int main(int argc, char* argv[])
 {
+    
+    if (!psmove_init(PSMOVE_CURRENT_VERSION)) {
+        fprintf(stderr, "PS Move API init failed (wrong version?)\n");
+        exit(1);
+    }
+    
     PSMove *move = psmove_connect();
 
     if (move == NULL) {
@@ -122,7 +127,7 @@ int main(int argc, char* argv[])
         exit(1);
     }
 
-    csv = fopen("read_performance.csv", "w");
+    csv = psmove_file_open("read_performance.csv", "w");
     assert(csv != NULL);
     fprintf(csv, "mode,time,reads,dropped\n");
 
@@ -142,8 +147,10 @@ int main(int argc, char* argv[])
 
     printf("\n");
 
-    fclose(csv);
-
+    psmove_file_close(csv);
+    
+    psmove_shutdown();
+    
     return 0;
 }
 

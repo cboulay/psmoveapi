@@ -63,16 +63,23 @@ if(PSMOVE_BUILD_TESTS)
         endforeach(TESTNAME)
 
         if (PSMOVE_BUILD_OPENGL_EXAMPLES)
-            set(OPENGL_EXAMPLES_LIBRARIES SDL)
+            set(OPENGL_EXAMPLES_LIBRARIES "")
 
-            if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+            IF(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
                 find_library(OPENGL_FRAMEWORK OpenGL)
                 find_library(GLUT_FRAMEWORK GLUT)
-                list(APPEND OPENGL_EXAMPLES_LIBRARIES SDLmain
+                list(APPEND OPENGL_EXAMPLES_LIBRARIES SDL SDLmain
                     ${OPENGL_FRAMEWORK} ${GLUT_FRAMEWORK})
-            else()
-                list(APPEND OPENGL_EXAMPLES_LIBRARIES GL glut)
-            endif()
+            ELSEIF(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+                list(APPEND OPENGL_EXAMPLES_LIBRARIES SDL GL glut)
+            ELSEIF(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
+                SET(ENV{SDL2DIR} ${ROOT_DIR}/external/SDL2/)
+                FIND_PACKAGE(SDL2)
+                include_directories(${SDL2_INCLUDE_DIR})
+                list(APPEND OPENGL_EXAMPLES_LIBRARIES ${SDL2_LIBRARY})
+                list(GET SDL2_LIBRARY 0 FIRST_SDL2_LIB)
+                get_filename_component(SDL_BIN_PATH ${FIRST_SDL2_LIB} DIRECTORY)
+            ENDIF()
 
             foreach(EXAMPLE test_opengl test_opengl2 test_opengl3)
                 add_executable(${EXAMPLE} ${CMAKE_CURRENT_LIST_DIR}/c/${EXAMPLE}.cpp ${MSVC_SRCS})
@@ -81,6 +88,12 @@ if(PSMOVE_BUILD_TESTS)
                     psmoveapi_tracker
                     ${OPENGL_EXAMPLES_LIBRARIES}
                     ${MSVC_LIBS})
+                IF(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
+                    add_custom_command(TARGET ${EXAMPLE} POST_BUILD
+                        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                            "${SDL_BIN_PATH}/SDL2.dll"
+                            $<TARGET_FILE_DIR:${EXAMPLE}>)
+                ENDIF()
             endforeach()
         endif()
     endif()
