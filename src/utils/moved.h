@@ -38,14 +38,18 @@
 #include <wchar.h>
 
 #ifdef _WIN32
-#  include <winsock2.h>
-#  include <ws2tcpip.h>
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
 #else
-#  include <arpa/inet.h>
-#  include <netinet/in.h>
-#  include <sys/types.h>
-#  include <sys/socket.h>
-#  include <fcntl.h>
+    #include <arpa/inet.h>
+    #include <netinet/in.h>
+    #include <sys/types.h>
+    #include <sys/socket.h>
+    #include <fcntl.h>
+#endif
+
+#ifndef _MSC_VER
+    #include <unistd.h>
 #endif
 
 #include "../daemon/psmove_moved_protocol.h"

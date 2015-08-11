@@ -81,8 +81,6 @@
 
 // -- constants ------
 
-#define PATH_MAX 1024
-
 /* Buffer size for writing LEDs and reading sensor data */
 #define PSMOVE_BUFFER_SIZE 49
 
@@ -1974,7 +1972,7 @@ psmove_get_magnetometer_calibration_filename(PSMove *move)
 {
     psmove_return_val_if_fail(move != NULL, NULL);
 
-    char filename[PATH_MAX];
+    char filename[FILENAME_MAX];
 
     char *serial = psmove_get_serial(move);
     psmove_return_val_if_fail(serial != NULL, NULL);
@@ -1985,7 +1983,7 @@ psmove_get_magnetometer_calibration_filename(PSMove *move)
             serial[i] = '_';
         }
     }
-    snprintf(filename, PATH_MAX, "%s.magnetometer.csv", serial);
+    snprintf(filename, FILENAME_MAX, "%s.magnetometer.csv", serial);
     free(serial);
 
     char *filepath = psmove_util_get_file_path(filename);

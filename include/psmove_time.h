@@ -51,7 +51,7 @@ ADDAPI void
 ADDCALL psmove_sleep(unsigned long milliseconds);
 
 ADDAPI void 
-ADDCALL psmove_usleep(__int64 usec);
+ADDCALL psmove_usleep(__int64_t usec);
 
 ADDAPI enum PSMove_Bool
 ADDCALL psmove_time_init();

@@ -31,8 +31,12 @@
 #ifndef __PSMOVE_FILE_H
 #define __PSMOVE_FILE_H
 
+#ifdef _MSC_VER
 struct _iobuf;
 typedef struct _iobuf FILE;
+#else
+#include <stdio.h>
+#endif
 
 #ifdef __cplusplus
 extern "C" {

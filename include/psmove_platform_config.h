@@ -30,10 +30,7 @@
 #ifndef PSMOVE_PLATFORM_CONFIG_H
 #define PSMOVE_PLATFORM_CONFIG_H
 
-// Only use the config header when building with cmake
-#ifdef defined(CMAKE_VERSION)
 #include "psmove_config.h"
-#endif
 
 #ifdef _MSC_VER
 #define __INLINE__ __inline
@@ -55,7 +52,7 @@
 #  endif
 #else
 #  define ADDAPI
-#  define ADDCALL
+#  define ADDCALL 
 #endif
 
 #endif // PSMOVE_PLATFORM_CONFIG_H

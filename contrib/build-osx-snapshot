@@ -86,6 +86,14 @@ if [ ! -d $OPENCV_INSTALL_DIR ]; then
     make install
 fi
 
+# Build SDL2
+(
+    cd $PSMOVEAPI_CHECKOUT/external/SDL2
+    ./autogen.sh
+    ./configure
+    make ${MAKE_ARGS}
+)
+
 cd $PSMOVEAPI_CHECKOUT
 
 # Build PS Move API

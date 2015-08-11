@@ -656,8 +656,9 @@ psmove_tracker_new_with_camera(int camera) {
 
     // just query a frame so that we know the camera works
     IplImage* frame = NULL;
-    while (!frame) {
-        frame = camera_control_query_frame(tracker->cc, NULL, NULL);
+    enum PSMove_Bool new_frame = PSMove_False;
+    while (!frame || new_frame == PSMove_False) {
+        frame = camera_control_query_frame(tracker->cc, NULL, NULL, &new_frame);
     }
 
     // prepare ROI data structures
@@ -2263,9 +2264,9 @@ void psmove_tracker_annotate(PSMoveTracker* tracker) {
 float
 psmove_tracker_hsvcolor_diff(TrackedController* tc) {
     double diff = 0;
-    diff += fabsf(tc->eFColorHSV.val[0] - tc->eColorHSV.val[0]) * 1.;  // diff of HUE is very important
-    diff += fabsf(tc->eFColorHSV.val[1] - tc->eColorHSV.val[1]) * 0.5; // saturation and value not so much
-    diff += fabsf(tc->eFColorHSV.val[2] - tc->eColorHSV.val[2]) * 0.5;
+    diff += fabs(tc->eFColorHSV.val[0] - tc->eColorHSV.val[0]) * 1.;  // diff of HUE is very important
+    diff += fabs(tc->eFColorHSV.val[1] - tc->eColorHSV.val[1]) * 0.5; // saturation and value not so much
+    diff += fabs(tc->eFColorHSV.val[2] - tc->eColorHSV.val[2]) * 0.5;
     return (float)diff;
 }
 
