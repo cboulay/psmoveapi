@@ -89,9 +89,13 @@ fi
 # Build SDL2
 (
     cd $PSMOVEAPI_CHECKOUT/external/SDL2
-    ./autogen.sh
-    ./configure
-    make ${MAKE_ARGS}
+    curl https://www.libsdl.org/release/SDL2-2.0.3.dmg > SDL2.dmg
+    hdiutil attach SDL2.dmg
+    cp -r /Volumes/SDL2/SDL2.framework ~/Library/Frameworks/SDL2.framework/
+    hdiutil detach /Volumes/SDL2
+#    ./autogen.sh
+#    ./configure
+#    make ${MAKE_ARGS}
 )
 
 cd $PSMOVEAPI_CHECKOUT
