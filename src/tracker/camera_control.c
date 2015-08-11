@@ -163,9 +163,8 @@ camera_control_new(int cameraID)
 
 #else
     // Assume webcam accessible from OpenCV.
-    char video[256];
-
-    if (psmove_util_get_env_string(PSMOVE_TRACKER_FILENAME_ENV, 256, video)) {
+    char *video = psmove_util_get_env_string(PSMOVE_TRACKER_FILENAME_ENV);
+    if (video) {
         psmove_DEBUG("Using '%s' as video input.\n", video);
         cc->capture = cvCaptureFromFile(video);
         free(video);

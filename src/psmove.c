@@ -557,7 +557,6 @@ int
 psmove_count_connected()
 {
     int count = psmove_count_connected_hidapi();
-
     if (g_clients == NULL && !g_psmove_remote_disabled) {
         g_clients = moved_client_list_open();
     }
@@ -1210,8 +1209,7 @@ psmove_connection_type(PSMove *move)
     } else {
         return Conn_USB;
     }
-#endif
-
+#else
     if (move->serial_number == NULL) {
         return Conn_Unknown;
     }
@@ -1221,6 +1219,7 @@ psmove_connection_type(PSMove *move)
     }
 
     return Conn_Bluetooth;
+#endif
 }
 
 int

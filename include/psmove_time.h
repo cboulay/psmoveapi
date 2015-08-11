@@ -33,6 +33,7 @@
 #include "psmove_platform_config.h"
 
 #include <time.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -43,6 +44,8 @@ struct timespec {               /* definition per POSIX.4 */
 	time_t          tv_sec;         /* seconds */
 	long            tv_nsec;        /* and nanoseconds */
 };
+
+typedef int64_t __int64_t;
 #endif // _MSC_VER
 
 typedef struct timespec PSMove_timestamp;
