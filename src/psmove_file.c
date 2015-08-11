@@ -39,15 +39,12 @@
 #ifdef _WIN32
     #include <windows.h>
     #include <direct.h>
-    #ifndef PATH_MAX
-        #define PATH_MAX MAX_PATH
-    #endif
-
     #define ENV_USER_HOME "APPDATA"
     #define PATH_SEP "\\"
 #else
     #define ENV_USER_HOME "HOME"
     #define PATH_SEP "/"
+    #include <unistd.h>
 #endif
 
 /* System-wide data directory */
@@ -75,11 +72,14 @@ psmove_util_get_env_string(
 	const size_t buffer_size,
 	char *out_buffer)
 {
-	size_t needed_buffer_size = 0;
-	errno_t result_code = getenv_s(&needed_buffer_size, out_buffer, buffer_size, environment_variable_name);
-	assert(needed_buffer_size <= buffer_size);
-
-	return (result_code == 0 && needed_buffer_size > 0) ? PSMove_True : PSMove_False;
+	char *env = getenv(environment_variable_name);
+    
+    if (env) {
+        out_buffer = strdup(env);
+        return PSMove_True;
+    } else {
+        return PSMove_False;
+    }
 }
 
 enum PSMove_Bool
@@ -87,8 +87,8 @@ psmove_util_set_env_string(
 	const char *environment_variable_name, 
 	const char *string_value)
 {
-	errno_t result_code = _putenv_s(environment_variable_name, string_value);
-
+    //int result_code = putenv(string_value);
+    int result_code = setenv(environment_variable_name, string_value, 1);
 	return (result_code == 0) ? PSMove_True : PSMove_False;
 }
 
@@ -97,7 +97,7 @@ psmove_util_get_env_int(const char *name)
 {
 	char buffer[256];
 
-	if (psmove_util_get_env_string(name, _countof(buffer), buffer)) {
+	if (psmove_util_get_env_string(name, 256, buffer)) {
 		char *end;
 		long result = strtol(buffer, &end, 10);
 
@@ -115,22 +115,20 @@ psmove_util_set_env_int(
 	const int int_value)
 {
 	char string_value[64];
-	sprintf_s(string_value, sizeof(string_value), "%d", int_value);
-
+	sprintf(string_value, "%d", int_value);
 	return psmove_util_set_env_string(environment_variable_name, string_value);
 }
 
 const char *
 psmove_util_get_data_dir()
 {
-	static char dir[PATH_MAX];
+	static char dir[FILENAME_MAX];
 
 	if (strlen(dir) == 0)
 	{
-		enum PSMove_Bool success = psmove_util_get_env_string(ENV_USER_HOME, _countof(dir), dir);
+		enum PSMove_Bool success = psmove_util_get_env_string(ENV_USER_HOME, strlen(dir)/sizeof(dir), dir);
 		assert(success == PSMove_True);
-
-		strncat_s(dir, _countof(dir), PATH_SEP ".psmoveapi", sizeof(dir));
+        strncat(dir, PATH_SEP ".psmoveapi", sizeof(dir) - strlen(dir) - 1);
 	}
 
 	return dir;
@@ -139,9 +137,9 @@ psmove_util_get_data_dir()
 char *
 psmove_util_get_file_path(const char *filename)
 {
-	const char *parent = psmove_util_get_data_dir();
-	char *result;
-	struct stat st;
+    const char *parent = psmove_util_get_data_dir();
+    char *result;
+    struct stat st;
 
 #ifndef _WIN32
 	// if run as root, use system-wide data directory
@@ -150,10 +148,10 @@ psmove_util_get_file_path(const char *filename)
 	}
 #endif
 
-	if (stat(filename, &st) == 0) {
+    if (stat(filename, &st) == 0) {
 		// File exists in the current working directory, prefer that
 		// to the file in the default data / configuration directory
-		return _strdup(filename);
+		return strdup(filename);
 	}
 
 	if (stat(parent, &st) != 0) {
@@ -166,9 +164,9 @@ psmove_util_get_file_path(const char *filename)
 
 	size_t result_length = strlen(parent) + 1 + strlen(filename) + 1;
 	result = (char *)(malloc(result_length));
-	strcpy_s(result, result_length, parent);
-	strcat_s(result, result_length, PATH_SEP);
-	strcat_s(result, result_length, filename);
+    strcpy(result, parent);
+	strcat(result, PATH_SEP);
+	strcat(result, filename);
 
 	return result;
 }
@@ -183,8 +181,6 @@ psmove_util_get_system_file_path(const char *filename)
 	if (result == NULL) {
 		return NULL;
 	}
-
-	_snprintf_s(result, len, _TRUNCATE, "%s%s%s", PSMOVE_SYSTEM_DATA_DIR, PATH_SEP, filename);
-
+    snprintf(result, len, "%s%s%s", PSMOVE_SYSTEM_DATA_DIR, PATH_SEP, filename);
 	return result;
 }

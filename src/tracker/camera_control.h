@@ -53,7 +53,9 @@ ADDCALL camera_control_set_deinterlace(CameraControl *cc,
 
 ADDAPI IplImage *
 ADDCALL camera_control_query_frame(CameraControl* cc,
-        PSMove_timestamp *ts_grab, PSMove_timestamp *ts_retrieve);
+                                   PSMove_timestamp *ts_grab,
+                                   PSMove_timestamp *ts_retrieve,
+                                   enum PSMove_Bool *out_new_frame);
 
 ADDAPI void
 ADDCALL camera_control_delete(CameraControl* cc);

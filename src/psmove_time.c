@@ -36,6 +36,11 @@
 #include <WinSock2.h> // for struct timeval
 #endif
 
+#ifndef _MSC_VER
+#include <unistd.h>
+#include <sys/time.h>
+#endif
+
 // -- Constants ---
 #if defined(_MSC_VER) || defined(__APPLE__)
 #define CLOCK_MONOTONIC 0
@@ -48,7 +53,7 @@ static const unsigned __int64 epoch = ((unsigned __int64)116444736000000000ULL);
 // filetime units in 100 nanoseconds intervals
 #define FILE_TIME_UNITS_PER_SECOND 10000000LL // 10 million filetime units per second
 #define FILE_TIME_UNITS_PER_MICROSECOND 10LL //  10 filetime units is 1 microsecond
-#endif // MSVC_BUILD
+#endif // _MSC_VER
 
 // -- Globals ---
 #ifdef _WIN32
@@ -59,7 +64,7 @@ long g_startup_time = 0;
 #endif
 
 // -- Functions ---
-#if defined(_MSC_VER) || defined(__APPLE__)
+#if defined(_MSC_VER)
 static int gettimeofday(struct timeval * tp, struct timezone * tzp)
 {
 	FILETIME    file_time;
@@ -85,7 +90,7 @@ static int gettimeofday(struct timeval * tp, struct timezone * tzp)
 }
 #endif // MSVC_BUILD
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER) || defined(__APPLE__)
 static int clock_gettime(int unused, struct timespec *ts)
 {
 	struct timeval tv;
@@ -109,7 +114,7 @@ psmove_sleep(unsigned long milliseconds)
 }
 
 void 
-psmove_usleep(__int64 usec)
+psmove_usleep(__int64_t usec)
 {
 #ifdef _MSC_VER
 	HANDLE timer;
@@ -190,6 +195,6 @@ long psmove_util_get_ticks()
 	psmove_return_val_if_fail(gettimeofday(&tv, NULL) == 0, 0);
 	now = (tv.tv_sec * 1000 + tv.tv_usec / 1000);
 
-	return (now - startup_time);
+	return (now - g_startup_time);
 #endif // _WIN32
 }

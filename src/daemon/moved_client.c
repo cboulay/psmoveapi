@@ -28,13 +28,17 @@
  **/
 
 #ifdef _WIN32
-#  include <winsock2.h>
-#  include <ws2tcpip.h>
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
 #else
-#  include <arpa/inet.h>
-#  include <netinet/in.h>
-#  include <netdb.h>
-#  include <sys/socket.h>
+    #include <arpa/inet.h>
+    #include <netinet/in.h>
+    #include <netdb.h>
+    #include <sys/socket.h>
+#endif
+
+#ifndef _MSC_VER
+    #include <unistd.h>
 #endif
 
 #include <stdio.h>
@@ -42,7 +46,6 @@
 #include <sys/types.h>
 #include <assert.h>
 #include <string.h>
-//#include <unistd.h>
 #include <errno.h>
 
 #include "psmove.h"

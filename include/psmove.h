@@ -32,6 +32,14 @@
 
 #include "psmove_platform_config.h"
 
+
+// Need this declared before include psmove_time.h
+/*! Boolean type. Use them instead of 0 and 1 to improve code readability. */
+enum PSMove_Bool {
+    PSMove_False = 0, /*!< False, Failure, Disabled (depending on context) */
+    PSMove_True = 1, /*!< True, Success, Enabled (depending on context) */
+};
+
 // Include the time functions with the main api
 #include "psmove_time.h"
 
@@ -140,12 +148,6 @@ enum PSMove_Update_Result {
     Update_Failed = 0, /*!< Could not update LEDs */
     Update_Success, /*!< LEDs successfully updated */
     Update_Ignored, /*!< LEDs don't need updating, see psmove_set_rate_limiting() */
-};
-
-/*! Boolean type. Use them instead of 0 and 1 to improve code readability. */
-enum PSMove_Bool {
-    PSMove_False = 0, /*!< False, Failure, Disabled (depending on context) */
-    PSMove_True = 1, /*!< True, Success, Enabled (depending on context) */
 };
 
 /*! Remote configuration options, for psmove_set_remote_config() */
