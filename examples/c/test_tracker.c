@@ -79,7 +79,6 @@ int main(int arg, char** args) {
             printf("Calibrating controller %d...", i);
             fflush(stdout);
             result = psmove_tracker_enable(tracker, controllers[i]);
-
             if (result == Tracker_CALIBRATED) {
                 enum PSMove_Bool auto_update_leds =
                     psmove_tracker_get_auto_update_leds(tracker,
@@ -108,7 +107,7 @@ int main(int arg, char** args) {
             cvShowImage("live camera feed", frame);
         }
 
-        printf("x  , %6.2f, y  , %6.2f, r  , %6.2f, xcm, %6.2f, ycm, %6.2f, zcm, %6.2f\n",
+        printf("x  , %6.2f, y  , %6.2f, r  , %6.2f\nxcm, %6.2f, ycm, %6.2f, zcm, %6.2f\n",
         	x, y, r, xcm, ycm, zcm);
 
         for (i=0; i<count; i++) {

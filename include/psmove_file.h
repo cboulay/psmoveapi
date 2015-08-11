@@ -88,8 +88,8 @@ ADDCALL psmove_util_set_env_int(const char *environment_variable_name, const int
 *
 * \return True on success
 **/
-ADDAPI enum PSMove_Bool
-ADDCALL psmove_util_get_env_string(const char *environment_variable_name, const size_t buffer_size, char *out_buffer);
+ADDAPI char *
+ADDCALL psmove_util_get_env_string(const char *environment_variable_name);
 
 /**
 * \brief Set a string value for environment variable

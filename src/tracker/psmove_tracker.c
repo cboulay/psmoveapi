@@ -958,8 +958,8 @@ enum PSMove_Bool
 psmove_tracker_blinking_calibration(PSMoveTracker *tracker, PSMove *move,
         struct PSMove_RGBValue rgb, CvScalar *color, CvScalar *hsv_color)
 {
-    char color_str[128];
-    if (psmove_util_get_env_string(PSMOVE_TRACKER_COLOR_ENV, 128, color_str)) {
+    char *color_str = psmove_util_get_env_string(PSMOVE_TRACKER_COLOR_ENV);
+    if (color_str != NULL) {
         int r, g, b;
         if (sscanf(color_str, "%02x%02x%02x", &r, &g, &b) == 3) {
             printf("r: %d, g: %d, b: %d\n", r, g, b);
@@ -969,6 +969,7 @@ psmove_tracker_blinking_calibration(PSMoveTracker *tracker, PSMove *move,
         } else {
             psmove_WARNING("Cannot parse color: '%s'\n", color_str);
         }
+        free(color_str);
     }
 
     psmove_tracker_update_image(tracker);
@@ -1620,6 +1621,7 @@ psmove_tracker_update_controller(PSMoveTracker *tracker, TrackedController *tc)
 int
 psmove_tracker_update_controller_cbb(PSMoveTracker *tracker, TrackedController *tc)
 {
+
     // Tell the LEDs to keep on keeping on.
     if (tc->auto_update_leds) {
         unsigned char r, g, b;
@@ -1652,7 +1654,7 @@ psmove_tracker_update_controller_cbb(PSMoveTracker *tracker, TrackedController *
     int sphere_found = 0;
     int roi_recentered = 0;
     int roi_exhausted = 0;
-    int contour_garbage = 0;
+    enum PSMove_Bool contour_is_junk = PSMove_False;
 
     while (!sphere_found && !roi_exhausted) { // Keep going until sphere_found or roi_exhausted
 
@@ -1672,7 +1674,18 @@ psmove_tracker_update_controller_cbb(PSMoveTracker *tracker, TrackedController *
         CvSeq* contourBest = NULL;
         psmove_tracker_biggest_contour(roi_m, tracker->storage, &contourBest, &sizeBest);  // get the biggest contour in roi_m
 
-        if (contourBest && CV_IS_SEQ(contourBest) && !contour_garbage) {
+        if (CV_IS_SEQ(contourBest)) {
+            if (contourBest->total < 6) {
+                psmove_DEBUG("contourBest->total = %d\n", contourBest->total);
+                contour_is_junk = PSMove_True;
+            }
+        }
+        else {
+            psmove_DEBUG("contourBest is not a CvSeq.\n");
+            contour_is_junk = PSMove_True;
+        }
+
+        if (contourBest && contour_is_junk == PSMove_False) {
             // We found a contour in our ROI, and we didn't already determine that the contour with this ROI was garbage.
 
             // Quickly evaluate the quality of the contour. We want to guard against garbage data.
@@ -1687,9 +1700,9 @@ psmove_tracker_update_controller_cbb(PSMoveTracker *tracker, TrackedController *
                 float d_y = (tc->roi_y + br.y + br.height / 2) - tc->y;
                 delta_px = sqrt(d_x*d_x + d_y*d_y);
             }
-            contour_garbage = rectRatio >= 1.25 || delta_px >= 400 || (br.width*br.height)<25;
+            contour_is_junk = (rectRatio >= 1.25 || delta_px >= 400 || (br.width*br.height)<25) ? PSMove_True : PSMove_False;
 
-            if (!roi_recentered && !contour_garbage) {
+            if (!roi_recentered && contour_is_junk == PSMove_False) {
                 // Recenter the ROI on the middle of the bounding rectangle, at smallest ROI >= 3x br size, limited by image size.
 
                 // Determine the minimum size of the new ROI
@@ -1718,7 +1731,7 @@ psmove_tracker_update_controller_cbb(PSMoveTracker *tracker, TrackedController *
                 roi_recentered = 1;
 
             }
-            else if (!contour_garbage) { // ROI already recentered
+            else if (contour_is_junk == PSMove_False) { // ROI already recentered
 
                 // Fit an ellipse to our contour
                 CvBox2D ellipse = cvFitEllipse2(contourBest); // TODO: Roll our own with some constraints.
@@ -1839,11 +1852,11 @@ psmove_tracker_update_controller_cbb(PSMoveTracker *tracker, TrackedController *
 
             // Set the new ROI. It automatically shifts away from edge if ROI is outside the bounds of the camera.
             psmove_tracker_set_roi(tracker, tc, tc->roi_x - roi_i->width / 2, tc->roi_y - roi_i->height / 2, roi_i->width, roi_i->height);
-            contour_garbage = 0; // Reset because we're going to use a new ROI
+            contour_is_junk = PSMove_False; // Reset because we're going to use a new ROI
 
         }
-        else {
-            // No contour and we are already at the biggest ROI
+        else {  //!(contourBest && contour_is_junk == PSMove_False) && !(tc->roi_level>0)
+            // Contour is junk and we are already at the largest ROI
 
             // What's going on here?
             int rx = tracker->search_tile_width * (tc->search_tile % tracker->search_tiles_horizontal);

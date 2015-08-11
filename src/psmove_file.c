@@ -66,79 +66,76 @@ void psmove_file_close(FILE* file_pointer)
 	fclose(file_pointer);
 }
 
-enum PSMove_Bool
-psmove_util_get_env_string(
-	const char *environment_variable_name,
-	const size_t buffer_size,
-	char *out_buffer)
+char *
+psmove_util_get_env_string(const char *name)
 {
-	char *env = getenv(environment_variable_name);
-    
+    char *env = getenv(name);
+
     if (env) {
-        out_buffer = strdup(env);
-        return PSMove_True;
-    } else {
-        return PSMove_False;
+        return strdup(env);  // Don't forget to free the result.
     }
+
+    return NULL;
 }
 
 enum PSMove_Bool
 psmove_util_set_env_string(
-	const char *environment_variable_name, 
-	const char *string_value)
+    const char *environment_variable_name, 
+    const char *string_value)
 {
-    //int result_code = putenv(string_value);
-    int result_code = setenv(environment_variable_name, string_value, 1);
-	return (result_code == 0) ? PSMove_True : PSMove_False;
+    char *full_str;
+    size_t full_len = strlen(environment_variable_name) + 1 + strlen(string_value) + 1;
+    full_str = (char *)(malloc(full_len * sizeof(char)));  // Can be freed when name removed from environment.
+    snprintf(full_str, full_len, "%s=%s", environment_variable_name, string_value);
+    int result_code = putenv(full_str);
+    return (result_code == 0) ? PSMove_True : PSMove_False;
 }
 
 int
 psmove_util_get_env_int(const char *name)
 {
-	char buffer[256];
+    char *env = getenv(name);
 
-	if (psmove_util_get_env_string(name, 256, buffer)) {
-		char *end;
-		long result = strtol(buffer, &end, 10);
-
-		if (*end == '\0' && *buffer != '\0') {
-			return result;
-		}
-	}
-
-	return -1;
+    if (env) {
+        char *end;
+        long result = strtol(env, &end, 10);
+        if (*end == '\0' && *env != '\0') {
+            return result;
+        }
+    }
+    return -1;
 }
 
 enum PSMove_Bool
 psmove_util_set_env_int(
-	const char *environment_variable_name,
-	const int int_value)
+    const char *environment_variable_name,
+    const int int_value)
 {
-	char string_value[64];
-	sprintf(string_value, "%d", int_value);
-	return psmove_util_set_env_string(environment_variable_name, string_value);
+    int size = snprintf(NULL, 0, "%d", int_value);
+    char * string_value = malloc(size + 1);
+    sprintf(string_value, "%d", 132);
+    enum PSMove_Bool result = psmove_util_set_env_string(environment_variable_name, string_value);
+    free(string_value);
+    return result;
 }
 
 const char *
 psmove_util_get_data_dir()
 {
-	static char dir[FILENAME_MAX];
-
-	if (strlen(dir) == 0)
-	{
-		enum PSMove_Bool success = psmove_util_get_env_string(ENV_USER_HOME, strlen(dir)/sizeof(dir), dir);
-		assert(success == PSMove_True);
-        strncat(dir, PATH_SEP ".psmoveapi", sizeof(dir) - strlen(dir) - 1);
-	}
-
-	return dir;
+    char* parent = psmove_util_get_env_string(ENV_USER_HOME);
+    char* child = ".psmoveapi";
+    size_t path_length = strlen(parent) + strlen(PATH_SEP) + strlen(child) + 1;
+    char* full_path = (char *)(malloc(path_length * sizeof(char)));
+    snprintf(full_path, path_length, "%s%s%s", parent, PATH_SEP, child);
+    free(parent);
+    return full_path;
 }
 
 char *
 psmove_util_get_file_path(const char *filename)
 {
     const char *parent = psmove_util_get_data_dir();
-    char *result;
+    char *full_path;
     struct stat st;
 
 #ifndef _WIN32
@@ -154,6 +151,7 @@ psmove_util_get_file_path(const char *filename)
 		return strdup(filename);
 	}
 
+    // Make the parent directory if it does not exist
 	if (stat(parent, &st) != 0) {
 #ifdef _WIN32
 		psmove_return_val_if_fail(_mkdir(parent) == 0, NULL);
@@ -162,25 +160,23 @@ psmove_util_get_file_path(const char *filename)
 #endif
 	}
 
-	size_t result_length = strlen(parent) + 1 + strlen(filename) + 1;
-	result = (char *)(malloc(result_length));
-    strcpy(result, parent);
-	strcat(result, PATH_SEP);
-	strcat(result, filename);
+    size_t path_length = strlen(parent) + strlen(PATH_SEP) + strlen(filename) +1;
+    full_path = (char *)(malloc(path_length * sizeof(char)));
+    snprintf(full_path, path_length, "%s%s%s", parent, PATH_SEP, filename);
 
-	return result;
+    return full_path;
 }
 
 char *
 psmove_util_get_system_file_path(const char *filename)
 {
-	char *result;
-	size_t len = strlen(PSMOVE_SYSTEM_DATA_DIR) + 1 + strlen(filename) + 1;
+    char *full_path;
+    size_t path_length = strlen(PSMOVE_SYSTEM_DATA_DIR) + strlen(PATH_SEP) + strlen(filename) + 1;
 
-	result= (char *)(malloc(len));
-	if (result == NULL) {
+    full_path = (char *)(malloc(path_length * sizeof(char)));
+    if (full_path == NULL) {
 		return NULL;
 	}
-    snprintf(result, len, "%s%s%s", PSMOVE_SYSTEM_DATA_DIR, PATH_SEP, filename);
-	return result;
+    snprintf(full_path, path_length, "%s%s%s", PSMOVE_SYSTEM_DATA_DIR, PATH_SEP, filename);
+    return full_path;
 }

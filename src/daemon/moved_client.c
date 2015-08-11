@@ -37,7 +37,9 @@
     #include <sys/socket.h>
 #endif
 
-#ifndef _MSC_VER
+#ifdef _MSC_VER
+    #define close closesocket
+#else
     #include <unistd.h>
 #endif
 
@@ -136,7 +138,7 @@ moved_client_create(const char *hostname)
 
     client->hostname = strdup(hostname);
 
-    client->socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    client->socket = (int)socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     assert(client->socket != -1);
 
     /**

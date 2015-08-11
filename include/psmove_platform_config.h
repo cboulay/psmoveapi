@@ -35,6 +35,7 @@
 #ifdef _MSC_VER
 #define __INLINE__ __inline
 #define snprintf _snprintf  // Not exactly the same, but close enough.
+#define strdup _strdup
 #else
 #define __INLINE__ inline
 #endif
