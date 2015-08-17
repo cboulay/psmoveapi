@@ -43,6 +43,9 @@ typedef struct _CameraControl CameraControl;
 ADDAPI CameraControl *
 ADDCALL camera_control_new(int cameraID);
 
+ADDAPI CameraControl *
+ADDCALL camera_control_new_with_settings(int cameraID, int width, int height, int framerate);
+
 ADDAPI void
 ADDCALL camera_control_read_calibration(CameraControl* cc,
         char* intrinsicsFile, char* distortionFile);

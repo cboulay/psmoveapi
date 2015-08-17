@@ -52,7 +52,9 @@ void camera_control_backup_system_settings(CameraControl* cc, const char* file) 
 	char* PATH = CL_DRIVER_REG_PATH;
     int err = RegOpenKeyExA(HKEY_CURRENT_USER, PATH, 0, KEY_ALL_ACCESS, &hKey);
 	if (err != ERROR_SUCCESS) {
-		printf("Error: %d Unable to open reg-key:  [HKCU]\\%s!", err, PATH);
+		printf("Error: %d Unable to open reg-key:  [HKCU]\\%s!\n", err, PATH);
+        printf("psmoveapi_tracker is configured to use CL Eye driver (non-SDK). ");
+        printf("Either the driver needs to be installed or psmoveapi_tracker should be configured to use PS3EYEDriver.\n");
 		return;
 	}
     RegQueryValueExA(hKey, "AutoAEC", NULL, NULL, (LPBYTE)&AutoAEC, &l);
@@ -89,7 +91,9 @@ void camera_control_restore_system_settings(CameraControl* cc, const char* file)
 	char* PATH = CL_DRIVER_REG_PATH;
     int err = RegOpenKeyExA(HKEY_CURRENT_USER, PATH, 0, KEY_ALL_ACCESS, &hKey);
 	if (err != ERROR_SUCCESS) {
-		printf("Error: %d Unable to open reg-key:  [HKCU]\\%s!", err, PATH);
+        printf("Error: %d Unable to open reg-key:  [HKCU]\\%s!\n", err, PATH);
+        printf("psmoveapi_tracker is configured to use CL Eye driver (non-SDK). ");
+        printf("Either the driver needs to be installed or psmoveapi_tracker should be configured to use PS3EYEDriver.\n");
 		return;
 	}
 
@@ -156,7 +160,9 @@ void camera_control_set_parameters(CameraControl* cc, int autoE, int autoG, int 
 	char* PATH = CL_DRIVER_REG_PATH;
     int err = RegOpenKeyExA(HKEY_CURRENT_USER, PATH, 0, KEY_ALL_ACCESS, &hKey);
 	if (err != ERROR_SUCCESS) {
-		printf("Error: %d Unable to open reg-key:  [HKCU]\\%s!", err, PATH);
+        printf("Error: %d Unable to open reg-key:  [HKCU]\\%s!\n", err, PATH);
+        printf("psmoveapi_tracker is configured to use CL Eye driver (non-SDK). ");
+        printf("Either the driver needs to be installed or psmoveapi_tracker should be configured to use PS3EYEDriver.\n");
 		return;
 	}
 	val = autoE > 0;

@@ -120,15 +120,25 @@ get_metrics(int *width, int *height)
 CameraControl *
 camera_control_new(int cameraID)
 {
+    return camera_control_new_with_settings(cameraID, 0, 0, 0);
+}
+
+CameraControl *
+camera_control_new_with_settings(int cameraID, int width, int height, int framerate)
+{
 	CameraControl* cc = (CameraControl*) calloc(1, sizeof(CameraControl));
 	cc->cameraID = cameraID;
 
+    if (framerate <= 0) {
+        framerate = PSMOVE_TRACKER_DEFAULT_FPS;
+    }
+
+    // Needed for cbb tracker. Will be overwritten by camera calibration files if they exist.
     cc->focl_x = DEFAULT_FOCAL_LENGTH;
     cc->focl_y = DEFAULT_FOCAL_LENGTH;
 
 #if defined(CAMERA_CONTROL_USE_CL_DRIVER)
     // Windows 32-bit. Either CL_SDK or Registry_requiring
-	int w, h;
 	int cams = CLEyeGetCameraCount();
 
 	if (cams <= cameraID) {
@@ -138,13 +148,13 @@ camera_control_new(int cameraID)
 
 	GUID cguid = CLEyeGetCameraUUID(cameraID);
 	cc->camera = CLEyeCreateCamera(cguid,
-                CLEYE_COLOR_PROCESSED, CLEYE_VGA, 60);
+        CLEYE_COLOR_PROCESSED, CLEYE_VGA, framerate);
 
-	CLEyeCameraGetFrameDimensions(cc->camera, &w, &h);
+    CLEyeCameraGetFrameDimensions(cc->camera, &width, &height);
 
 	// Depending on color mode chosen, create the appropriate OpenCV image
-	cc->frame4ch = cvCreateImage(cvSize(w, h), IPL_DEPTH_8U, 4);
-	cc->frame3ch = cvCreateImage(cvSize(w, h), IPL_DEPTH_8U, 3);
+    cc->frame4ch = cvCreateImage(cvSize(width, height), IPL_DEPTH_8U, 4);
+    cc->frame3ch = cvCreateImage(cvSize(width, height), IPL_DEPTH_8U, 3);
 
 	CLEyeCameraStart(cc->camera);
 
@@ -157,9 +167,13 @@ camera_control_new(int cameraID)
         free(cc);
         return NULL;
     }
-    get_metrics(&(cc->width), &(cc->height));
-    cc->eye = ps3eye_open(cameraID, cc->width, cc->height, PS3EYE_FRAMERATE);
-    cc->framebgr = cvCreateImage(cvSize(cc->width, cc->height), IPL_DEPTH_8U, 3);
+
+    if (width <= 0 || height <= 0) {
+        get_metrics(&width, &height);
+    }
+
+    cc->eye = ps3eye_open(cameraID, width, height, framerate);
+    cc->framebgr = cvCreateImage(cvSize(width, height), IPL_DEPTH_8U, 3);
 
 #else
     // Assume webcam accessible from OpenCV.
@@ -170,14 +184,16 @@ camera_control_new(int cameraID)
         free(video);
     } else {
         cc->capture = cvCaptureFromCAM(cc->cameraID);
-        int width, height;
-        get_metrics(&width, &height);
+        if (width <= 0 || height <= 0) {
+            get_metrics(&width, &height);
+        }
         cvSetCaptureProperty(cc->capture, CV_CAP_PROP_FRAME_WIDTH, width);
         cvSetCaptureProperty(cc->capture, CV_CAP_PROP_FRAME_HEIGHT, height);
     }
 
 #endif
-
+    cc->width = width;
+    cc->height = height;
     cc->deinterlace = PSMove_False;
 
 	return cc;
@@ -212,15 +228,11 @@ camera_control_read_calibration(CameraControl* cc,
             cc->frame3chUndistort = cvCloneImage(
                     camera_control_query_frame(cc, NULL, NULL, &new_frame));
         }
-
         int width, height;
         get_metrics(&width, &height);
-
         cc->mapx = cvCreateImage(cvSize(width, height), IPL_DEPTH_32F, 1);
         cc->mapy = cvCreateImage(cvSize(width, height), IPL_DEPTH_32F, 1);
-
         cvInitUndistortMap(intrinsic, distortion, cc->mapx, cc->mapy);
-
         cc->focl_x = CV_MAT_ELEM(*intrinsic, float, 0, 0);
         cc->focl_y = CV_MAT_ELEM(*intrinsic, float, 1, 1);
 
@@ -255,7 +267,6 @@ camera_control_query_frame( CameraControl* cc,
 #elif defined(CAMERA_CONTROL_USE_PS3EYE_DRIVER)
     int stride = 0;
     unsigned char *pixels = ps3eye_grab_frame(cc->eye, &stride);
-
     // Convert pixels from camera to BGR
     unsigned char *cvpixels;
     cvGetRawData(cc->framebgr, &cvpixels, 0, 0);
@@ -264,7 +275,6 @@ camera_control_query_frame( CameraControl* cc,
         yuv422_to_bgr(pixels, stride, cvpixels, cc->width, cc->height);
         *out_new_frame = PSMove_True;
     }
-
     result = cc->framebgr;
 #else
     cvGrabFrame(cc->capture);
