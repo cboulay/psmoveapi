@@ -173,6 +173,13 @@ camera_control_new_with_settings(int cameraID, int width, int height, int framer
     }
 
     cc->eye = ps3eye_open(cameraID, width, height, framerate);
+
+    if (cc->eye == NULL) {
+        psmove_WARNING("Failed to open camera ID %d", cameraID);
+        free(cc);
+        return NULL;
+    }
+
     cc->framebgr = cvCreateImage(cvSize(width, height), IPL_DEPTH_8U, 3);
 
 #else
