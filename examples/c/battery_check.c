@@ -64,8 +64,9 @@ int main(int argc, char* argv[])
     int i, c;
     c = psmove_count_connected();
     printf("Connected controllers: %d\n", c);
-    if(c==0)
+    if (c == 0) {
         return 1;
+    }
 
     PSMove **moves = (PSMove **)malloc(sizeof(PSMove *)*c);
 
