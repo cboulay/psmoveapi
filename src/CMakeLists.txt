@@ -25,22 +25,6 @@ link_directories(${ROOT_DIR}/external/libs)
 
 set(INFO_LICENSE "BSD")
 
-# Madgwick's orientation algorithm (GPL-licensed)
-option(PSMOVE_USE_MADGWICK_AHRS "Use AHRS algorithm (GPL license)" OFF)
-
-# AHRS algorithm
-IF(PSMOVE_USE_MADGWICK_AHRS)
-    add_definitions(-DPSMOVE_WITH_MADGWICK_AHRS)
-    set(INFO_LICENSE "GPL")
-    set(INFO_AHRS_ALGORITHM "Madgwick AHRS")
-    set(PSMOVEAPI_ALGORITHM_SRC
-        ${ROOT_DIR}/external/MadgwickAHRS/MadgwickAHRS.c
-    )
-ELSE()
-    set(INFO_AHRS_ALGORITHM "None")
-    set(PSMOVEAPI_ALGORITHM_SRC)
-ENDIF()
-
 # Make a debug build with helpful output for debugging / maintenance
 option(PSMOVE_USE_DEBUG "Build for debugging" OFF)
 
@@ -156,7 +140,6 @@ list(APPEND PSMOVEAPI_LIBRARY_SRC ${HIDAPI_SRC})
 list(APPEND PSMOVEAPI_LIBRARY_SRC ${PSMOVEAPI_SRC})
 list(APPEND PSMOVEAPI_LIBRARY_SRC ${PSMOVEAPI_MOVED_SRC})
 list(APPEND PSMOVEAPI_LIBRARY_SRC ${PSMOVEAPI_PLATFORM_SRC})
-list(APPEND PSMOVEAPI_LIBRARY_SRC ${PSMOVEAPI_ALGORITHM_SRC})
 
 # Shared library
 

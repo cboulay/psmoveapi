@@ -40,10 +40,6 @@
 #include "psmove_private.h"
 #include "psmove_orientation.h"
 
-#if defined(PSMOVE_WITH_MADGWICK_AHRS)
-#  include "../external/MadgwickAHRS/MadgwickAHRS.h"
-#endif
-
 #include "math/psmove_quaternion.hpp"
 #include "math/psmove_alignment.hpp"
 #include "math/psmove_vector.h"
@@ -378,60 +374,6 @@ psmove_orientation_update(PSMoveOrientation *orientation_state)
 					/* Accelerometer */
 					Eigen::Vector3f(a.x, a.y, a.z));
 			}
-			break;
-		case OrientationFusion_MadgwickMARG:
-			#ifdef PSMOVE_WITH_MADGWICK_AHRS
-			{
-				float raw_quaternion[4]= {
-					orientation_state->quaternion.w(),
-					orientation_state->quaternion.x(),
-					orientation_state->quaternion.y(),
-					orientation_state->quaternion.z()};
-
-				// Get the un-transformed sensor data
-				float a_x, a_y, a_z;
-				psmove_get_accelerometer_frame(orientation_state->move, (enum PSMove_Frame)(frame_half), &a_x, &a_y, &a_z);
-
-				float omega_x, omega_y, omega_z;
-				psmove_get_gyroscope_frame(orientation_state->move, (enum PSMove_Frame)(frame_half), &omega_x, &omega_y, &omega_z);
-
-				float m_x, m_y, m_z;
-				psmove_get_magnetometer_vector(orientation_state->move, &m_x, &m_y, &m_z);
-
-				// The Madgwick AHRS algorithm assumes that the identity pose
-				// has +z up rather than the native +y up so rotate about the +x axis by 90 degrees.
-				// NOTE: This completely ignores the identity-pose transform set.
-				MadgwickAHRSupdate(raw_quaternion,
-						orientation_state->sample_freq,
-						/* Accelerometer */
-						a_x, a_z, -a_y,
-						/* Gyroscope */
-						omega_x, omega_z, -omega_y,
-						/* Magnetometer */
-						m_x, m_z, -m_y
-				);
-			}
-			#else
-			{
-				PSMove_3AxisVector m= 
-					psmove_orientation_get_magnetometer_normalized_vector(orientation_state);
-				PSMove_3AxisVector a= 
-					psmove_orientation_get_accelerometer_normalized_vector(orientation_state, (enum PSMove_Frame)(frame_half));
-				PSMove_3AxisVector omega= 
-					psmove_orientation_get_gyroscope_vector(orientation_state, (enum PSMove_Frame)(frame_half));
-
-				// Apply the filter
-				_psmove_orientation_fusion_madgwick_marg_update(
-					orientation_state,
-					deltaT,
-					/* Gyroscope */
-					Eigen::Vector3f(omega.x, omega.y, omega.z),
-					/* Accelerometer */
-					Eigen::Vector3f(a.x, a.y, a.z),
-					/* Magnetometer */
-					Eigen::Vector3f(m.x, m.y, m.z));
-			}
-			#endif
 			break;
 		case OrientationFusion_ComplementaryMARG:
 			{
