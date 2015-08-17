@@ -87,9 +87,14 @@
 
 %}
 
+%include "psmove_platform_config.h"
 %include "psmove_config.h"
 
+
 %include "psmove.h"
+%include "psmove_time.h"
+%include "psmove_file.h"
+
 typedef struct {} PSMove;
 
 #ifdef PSMOVE_BUILD_TRACKER

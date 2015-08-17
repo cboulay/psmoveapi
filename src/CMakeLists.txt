@@ -19,6 +19,7 @@ set(PSMOVEAPI_INSTALL_TARGETS) # Container for build targets to be installed
 
 
 include_directories(${ROOT_DIR}/external/hidapi/hidapi)
+include_directories(${ROOT_DIR}/external/eigen)
 # Put any other libraries that you might need in here
 link_directories(${ROOT_DIR}/external/libs)
 
@@ -139,6 +140,9 @@ file(GLOB PSMOVEAPI_MOVED_SRC
 
 file(GLOB PSMOVEAPI_SRC
     "${CMAKE_CURRENT_LIST_DIR}/*.c"
+    "${CMAKE_CURRENT_LIST_DIR}/*.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/math/*.c"
+    "${CMAKE_CURRENT_LIST_DIR}/math/*.cpp"
 )
 
 file(GLOB PSMOVEAPI_HEADERS
@@ -220,4 +224,6 @@ message("    BlueZ 5 support:  " ${INFO_BLUEZ5_SUPPORT} " (for pairing on Linux 
 
 #add_subdirectory(tracker ${CMAKE_BINARY_DIR})
 include(${CMAKE_CURRENT_LIST_DIR}/tracker/CMakeLists.txt)
-include(${CMAKE_CURRENT_LIST_DIR}/utils/CMakeLists.txt)#add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/utils)
+#add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/utils)
+include(${CMAKE_CURRENT_LIST_DIR}/utils/CMakeLists.txt)
+include(${CMAKE_CURRENT_LIST_DIR}/unit_tests/CMakeLists.txt)

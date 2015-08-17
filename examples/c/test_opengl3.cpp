@@ -30,15 +30,19 @@
 #include <stdio.h>
 
 #include <time.h>
-#include <unistd.h>
 #include <assert.h>
 #include <math.h>
 #include <stdlib.h>
 
 #include <list>
 
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
+
 #include "psmove_examples_opengl.h"
-#include <SDL/SDL.h>
 
 #include "psmove.h"
 #include "psmove_tracker.h"
@@ -107,7 +111,7 @@ class Drum {
                 glColor3f(.5, 0., 0.);
             }
             glTranslatef(pos.x, pos.y, pos.z);
-            glutSolidSphere(radius, 10, 10);
+            drawSolidSphere(radius, 10, 10);
         }
 
         Vector3D pos;
@@ -125,7 +129,7 @@ class Tracker {
         void render();
 
         PSMove **m_moves;
-        int m_move_count;
+        int m_count;
 
         Drum m_drums[MAX_DRUMS];
         int m_drum_count;
@@ -137,17 +141,29 @@ class Tracker {
 
 Tracker::Tracker()
     : m_moves(NULL),
-      m_move_count(psmove_count_connected()),
+      m_count(0),
       m_drums(),
       m_drum_count(0),
-      m_tracker(psmove_tracker_new()),
-      m_fusion(psmove_fusion_new(m_tracker, 1., 1000.))
+      m_tracker(NULL),
+      m_fusion(NULL)
 {
+    if (!psmove_init(PSMOVE_CURRENT_VERSION)) {
+        fprintf(stderr, "PS Move API init failed (wrong version?)\n");
+        exit(1);
+    }
+    
+    m_count = psmove_count_connected();
+    m_tracker = psmove_tracker_new();
+    if (m_tracker == NULL) {
+        fprintf(stderr, "No tracker available! (Missing camera?)\n");
+        exit(1);
+    }
+    m_fusion = psmove_fusion_new(m_tracker, 1., 1000.);
+    
     psmove_tracker_set_mirror(m_tracker, PSMove_True);
-    psmove_tracker_set_exposure(m_tracker, Exposure_HIGH);
-
-    m_moves = (PSMove**)calloc(m_move_count, sizeof(PSMove*));
-    for (int i=0; i<m_move_count; i++) {
+    psmove_tracker_set_exposure(m_tracker, Exposure_LOW);
+    m_moves = (PSMove**)calloc(m_count, sizeof(PSMove*));
+    for (int i=0; i<m_count; i++) {
         m_moves[i] = psmove_connect_by_id(i);
 
         psmove_enable_orientation(m_moves[i], PSMove_True);
@@ -161,10 +177,11 @@ Tracker::~Tracker()
 {
     psmove_fusion_free(m_fusion);
     psmove_tracker_free(m_tracker);
-    for (int i=0; i<m_move_count; i++) {
+    for (int i=0; i<m_count; i++) {
         psmove_disconnect(m_moves[i]);
     }
     free(m_moves);
+    psmove_shutdown();
 }
 
 void
@@ -174,7 +191,7 @@ Tracker::update()
         m_drums[j].highlighted = false;
     }
 
-    for (int i=0; i<m_move_count; i++) {
+    for (int i=0; i<m_count; i++) {
         while (psmove_poll(m_moves[i]));
 
         Vector3D pos;
@@ -261,23 +278,23 @@ Tracker::render()
     glMatrixMode(GL_PROJECTION);
     glLoadMatrixf(psmove_fusion_get_projection_matrix(m_fusion));
 
-    for (int i=0; i<m_move_count; i++) {
+    for (int i=0; i<m_count; i++) {
         glDisable(GL_LIGHTING);
         glMatrixMode(GL_MODELVIEW);
         glLoadMatrixf(psmove_fusion_get_modelview_matrix(m_fusion, m_moves[i]));
 
         glColor3f(1., 0., 0.);
-        glutWireCube(1.);
+        drawWireCube(1.);
         glColor3f(0., 1., 0.);
 
         glPushMatrix();
         glScalef(1., 1., 4.5);
         glTranslatef(0., 0., -.5);
-        glutWireCube(1.);
+        drawWireCube(1.);
         glPopMatrix();
 
         glColor3f(0., 0., 1.);
-        glutWireCube(3.);
+        drawWireCube(3.);
     }
 
     glEnable(GL_LIGHTING);
@@ -301,8 +318,11 @@ class Renderer {
 
         void init();
         void render();
+        Tracker &get_tracker() { return m_tracker; }
 
-        SDL_Surface *m_display;
+    private:
+        SDL_Window *m_window;
+        SDL_GLContext m_glContext;
         Tracker &m_tracker;
 };
 
@@ -313,8 +333,8 @@ play_audio(void *userdata, Uint8 *stream, int len)
     Renderer *renderer = (Renderer*)userdata;
     float frequency = 0;
 
-    for (int i=0; i<renderer->m_tracker.m_drum_count; i++) {
-        Drum *drum = &(renderer->m_tracker.m_drums[i]);
+    for (int i=0; i<renderer->get_tracker().m_drum_count; i++) {
+        Drum *drum = &(renderer->get_tracker().m_drums[i]);
         if (drum->highlighted) {
             frequency = 1. + 2. * i;
         }
@@ -328,10 +348,13 @@ play_audio(void *userdata, Uint8 *stream, int len)
 }
 
 Renderer::Renderer(Tracker &tracker)
-    : m_display(NULL),
+    : m_window(NULL),
+      m_glContext(NULL),
       m_tracker(tracker)
 {
-    SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO);
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) {
+        sdlDie("Unable to initialize SDL");
+    }
 
     SDL_AudioSpec wanted;
     wanted.freq = 44100;
@@ -341,11 +364,23 @@ Renderer::Renderer(Tracker &tracker)
     wanted.callback = play_audio;
     wanted.userdata = this;
     if (SDL_OpenAudio(&wanted, NULL) < 0) {
-        printf("Cannot open audio device\n");
+        sdlDie("Cannot open audio device\n");
     }
     SDL_PauseAudio(0);
 
-    m_display = SDL_SetVideoMode(640, 480, 0, SDL_OPENGL);
+    m_window = SDL_CreateWindow("OpenGL Test3",
+                                SDL_WINDOWPOS_CENTERED,
+                                SDL_WINDOWPOS_CENTERED,
+                                640, 480,
+                                SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
+
+    if (m_window == NULL) {
+        sdlDie("Unable to initialize SDL");
+    }
+    checkSDLError(__LINE__);
+
+    m_glContext = SDL_GL_CreateContext(m_window);
+    checkSDLError(__LINE__);
 }
 
 Renderer::~Renderer()
@@ -356,9 +391,6 @@ Renderer::~Renderer()
 void
 Renderer::init()
 {
-    char *argv[] = { NULL };
-    int argc = 0;
-    glutInit(&argc, argv);
     glClearColor(0., 0., 0., 1.);
 
     glViewport(0, 0, 640, 480);
@@ -371,7 +403,7 @@ void
 Renderer::render()
 {
     m_tracker.render();
-    SDL_GL_SwapBuffers();
+    SDL_GL_SwapWindow(m_window);
 }
 
 class Main {

@@ -34,7 +34,7 @@
 #include "opencv2/highgui/highgui_c.h"
 #include "opencv2/imgproc/imgproc_c.h"
 
-#if defined(WIN32)
+#if defined(_WIN32)
 #    include <windows.h>
 #endif
 
@@ -60,21 +60,20 @@ struct _CameraControl {
 #endif
 
 #if defined(CAMERA_CONTROL_USE_PS3EYE_DRIVER)
-        ps3eye_t *eye;
-        int width;
-        int height;
-        IplImage *framebgr;
+    ps3eye_t *eye;
+    int width;
+    int height;
+    IplImage *framebgr;
 #endif
 
-	CvCapture* capture;
-
-	IplImage* mapx;
-	IplImage* mapy;
+    CvCapture* capture;
+    IplImage* mapx;
+    IplImage* mapy;
 
     float focl_x;
     float focl_y;
 
-        enum PSMove_Bool deinterlace;
+    enum PSMove_Bool deinterlace;
 };
 
 #endif

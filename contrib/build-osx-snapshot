@@ -29,6 +29,12 @@ if [ ! -f $PSMOVEAPI_CHECKOUT/CMakeLists.txt ]; then
     exit 1
 fi
 
+# Download the eigen library needed for orientation estimation
+(
+    cd $PSMOVEAPI_CHECKOUT/external
+    hg clone https://bitbucket.org/eigen/eigen
+)
+
 # Build libusb-1.0 as universal static library
 # needed for the PS3EYEDriver to access the PSEye
 # otherwise we'd dynamically link against some the Homebrew libusb
@@ -86,6 +92,18 @@ if [ ! -d $OPENCV_INSTALL_DIR ]; then
     make install
 fi
 
+# Build SDL2
+(
+    cd $PSMOVEAPI_CHECKOUT/external/SDL2
+    curl https://www.libsdl.org/release/SDL2-2.0.3.dmg > SDL2.dmg
+    hdiutil attach SDL2.dmg
+    cp -r /Volumes/SDL2/SDL2.framework ~/Library/Frameworks/SDL2.framework/
+    hdiutil detach /Volumes/SDL2
+#    ./autogen.sh
+#    ./configure
+#    make ${MAKE_ARGS}
+)
+
 cd $PSMOVEAPI_CHECKOUT
 
 # Build PS Move API
@@ -93,10 +111,14 @@ PSMOVEAPI_PREFIX=/opt/psmoveapi_${PSMOVEAPI_VERSION}/
 rm -rf build
 mkdir build
 cd build
-cmake -DPSMOVE_USE_PS3EYE_DRIVER=ON \
-      -DPSMOVE_BUILD_TRACKER=ON \
+cmake -DPSMOVE_BUILD_CSHARP_BINDINGS=ON \
+      -DPSMOVE_BUILD_EXAMPLES=ON \
       -DPSMOVE_BUILD_JAVA_BINDINGS=ON \
+      -DPSMOVE_BUILD_OPENGL_EXAMPLES=ON \
       -DPSMOVE_BUILD_PROCESSING_BINDINGS=ON \
+      -DPSMOVE_BUILD_TRACKER=ON \
+      -DPSMOVE_USE_MADGWICK_AHRS=ON \
+      -DPSMOVE_USE_PS3EYE_DRIVER=ON
       -DCMAKE_INSTALL_PREFIX=$PSMOVEAPI_PREFIX ..
 make ${MAKE_ARGS}
 mkdir tmp

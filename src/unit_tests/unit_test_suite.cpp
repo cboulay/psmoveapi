@@ -1,4 +1,3 @@
-
  /**
  * PS Move API - An interface for the PS Move Motion Controller
  * Copyright (c) 2012 Thomas Perl <m@thp.io>
@@ -27,48 +26,33 @@
  * POSSIBILITY OF SUCH DAMAGE.
  **/
 
-
-#include <unistd.h>
+//-- includes -----
 #include <stdio.h>
 #include <stdlib.h>
-#include <assert.h>
-
 #include "psmove.h"
+#include "unit_test.h"
 
+//-- prototypes -----
+UNIT_TEST_SUITE_DECLARE_C_MODULE(run_vector_unit_tests)
+
+//-- entry point -----
 int
 main(int argc, char* argv[])
 {
-    PSMove *move;
+	if (!psmove_init(PSMOVE_CURRENT_VERSION)) 
+	{
+		fprintf(stderr, "PS Move API init failed (wrong version?)\n");
+		exit(1);
+	}
 
-    move = psmove_connect();
+	UNIT_TEST_SUITE_BEGIN()
+		UNIT_TEST_SUITE_CALL_C_MODULE(run_vector_unit_tests);
+		UNIT_TEST_SUITE_CALL_CPP_MODULE(run_quaternion_unit_tests);
+		UNIT_TEST_SUITE_CALL_CPP_MODULE(run_matrix_unit_tests);
+		UNIT_TEST_SUITE_CALL_CPP_MODULE(run_alignment_unit_tests);
+	UNIT_TEST_SUITE_END()
 
-    if (move == NULL) {
-        fprintf(stderr, "Could not connect to controller.\n");
-        return EXIT_FAILURE;
-    }
+	psmove_shutdown();
 
-    assert(psmove_has_calibration(move));
-
-    if (psmove_connection_type(move) == Conn_Bluetooth) {
-        float ax, ay, az, gx, gy, gz;
-
-        while (1) {
-            int res = psmove_poll(move);
-            if (res) {
-                psmove_get_accelerometer_frame(move, Frame_SecondHalf,
-                        &ax, &ay, &az);
-                psmove_get_gyroscope_frame(move, Frame_SecondHalf,
-                        &gx, &gy, &gz);
-
-                printf("A: %5.2f %5.2f %5.2f ", ax, ay, az);
-                printf("G: %6.2f %6.2f %6.2f ", gx, gy, gz);
-                printf("\n");
-            }
-        }
-    }
-
-    psmove_disconnect(move);
-
-    return EXIT_SUCCESS;
+	return success ? EXIT_SUCCESS : EXIT_FAILURE;
 }
-

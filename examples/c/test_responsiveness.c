@@ -35,7 +35,7 @@
  * 3) Rumbles for 1 second in every 5. For controller to controller comparison.
  **/
 
-#include <unistd.h>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -100,6 +100,7 @@ int main(int argc, char* argv[])
         psmove_disconnect(moves[i]);
     }
     free(moves);
+    psmove_shutdown();
 
     return 0;
 }

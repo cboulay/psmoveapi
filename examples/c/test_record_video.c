@@ -30,7 +30,6 @@
 #include <stdio.h>
 
 #include <time.h>
-#include <unistd.h>
 #include <assert.h>
 
 #include "opencv2/core/core_c.h"
@@ -40,6 +39,12 @@
 #include "psmove_tracker.h"
 
 int main(int arg, char** args) {
+    
+    if (!psmove_init(PSMOVE_CURRENT_VERSION)) {
+        fprintf(stderr, "PS Move API init failed (wrong version?)\n");
+        exit(1);
+    }
+    
     int count = psmove_count_connected();
 
     int i;
@@ -92,6 +97,7 @@ int main(int arg, char** args) {
 
     psmove_tracker_free(tracker);
     free(moves);
+    psmove_shutdown();
     return 0;
 }
 

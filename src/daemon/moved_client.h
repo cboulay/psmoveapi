@@ -31,55 +31,39 @@
 #ifndef MOVED_CLIENT_H
 #define MOVED_CLIENT_H
 
-
-#ifdef _WIN32
-#  include <winsock2.h>
-#  include <ws2tcpip.h>
-#else
-#  include <arpa/inet.h>
-#  include <netinet/in.h>
-#  include <netdb.h>
-#  include <sys/socket.h>
-#endif
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/types.h>
-#include <assert.h>
-#include <string.h>
-#include <unistd.h>
-#include <errno.h>
-
+#include "psmove_platform_config.h"
 #include "psmove_moved_protocol.h"
 
-typedef struct {
-    char *hostname;
-
-    int socket;
-    struct sockaddr_in moved_addr;
-
-    unsigned char request_buf[MOVED_SIZE_REQUEST];
-    unsigned char read_response_buf[MOVED_SIZE_READ_RESPONSE];
-} moved_client;
+struct moved_client;
 
 typedef struct _moved_client_list {
-    moved_client *client;
+    struct moved_client *client;
     struct _moved_client_list *next;
 } moved_client_list;
 
-moved_client_list *
-moved_client_list_open();
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-void
-moved_client_list_destroy(moved_client_list *client_list);
+ADDAPI moved_client_list *
+ADDCALL moved_client_list_open();
 
-moved_client *
-moved_client_create(const char *hostname);
+ADDAPI void
+ADDCALL moved_client_list_destroy(moved_client_list *client_list);
 
-int
-moved_client_send(moved_client *client, char req, char id, const unsigned char *data);
+ADDAPI struct moved_client *
+ADDCALL moved_client_create(const char *hostname);
 
-void
-moved_client_destroy(moved_client *client);
+ADDAPI int
+ADDCALL moved_client_send(struct moved_client *client, char req, char id, const unsigned char *data);
 
+ADDAPI unsigned char *
+ADDCALL moved_client_get_read_response_buffer(struct moved_client *client);
+
+ADDAPI void
+ADDCALL moved_client_destroy(struct moved_client *client);
+
+#ifdef __cplusplus
+}
+#endif
 #endif

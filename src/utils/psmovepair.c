@@ -30,7 +30,6 @@
 
 
 
-#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -45,6 +44,11 @@
 
 int pair(const char *custom_addr)
 {
+    if (!psmove_init(PSMOVE_CURRENT_VERSION)) {
+        fprintf(stderr, "PS Move API init failed (wrong version?)\n");
+        exit(1);
+    }
+
     int count = psmove_count_connected();
     int i;
     PSMove *move;
@@ -91,7 +95,7 @@ int pair(const char *custom_addr)
 
         psmove_disconnect(move);
     }
-
+    psmove_shutdown();
     return result;
 }
 
@@ -132,7 +136,7 @@ int run_daemon()
 #else
     // On non-Linux systems we just try to pair every 5 seconds for now
     while (1) {
-        usleep(5000000);
+        psmove_sleep(5);
         pair(NULL);
     }
 #endif // __linux

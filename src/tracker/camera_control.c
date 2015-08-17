@@ -36,6 +36,7 @@
 #include "../psmove_private.h"
 
 #include <stdio.h>
+#include <stdint.h>
 
 #include "camera_control_private.h"
 
@@ -126,6 +127,7 @@ camera_control_new(int cameraID)
     cc->focl_y = DEFAULT_FOCAL_LENGTH;
 
 #if defined(CAMERA_CONTROL_USE_CL_DRIVER)
+    // Windows 32-bit. Either CL_SDK or Registry_requiring
 	int w, h;
 	int cams = CLEyeGetCameraCount();
 
@@ -147,6 +149,7 @@ camera_control_new(int cameraID)
 	CLEyeCameraStart(cc->camera);
 
 #elif defined(CAMERA_CONTROL_USE_PS3EYE_DRIVER)
+    // Mac or Windows
     // Initialize PS3EYEDriver
     ps3eye_init();
     int cams = ps3eye_count_connected();
@@ -161,7 +164,6 @@ camera_control_new(int cameraID)
 #else
     // Assume webcam accessible from OpenCV.
     char *video = psmove_util_get_env_string(PSMOVE_TRACKER_FILENAME_ENV);
-
     if (video) {
         psmove_DEBUG("Using '%s' as video input.\n", video);
         cc->capture = cvCaptureFromFile(video);
@@ -206,8 +208,9 @@ camera_control_read_calibration(CameraControl* cc,
 
     if (intrinsic && distortion) {
         if (!cc->frame3chUndistort) {
+            enum PSMove_Bool new_frame;
             cc->frame3chUndistort = cvCloneImage(
-                    camera_control_query_frame(cc, NULL, NULL));
+                    camera_control_query_frame(cc, NULL, NULL, &new_frame));
         }
 
         int width, height;
@@ -228,10 +231,13 @@ camera_control_read_calibration(CameraControl* cc,
 }
 
 IplImage *
-camera_control_query_frame(CameraControl* cc,
-        PSMove_timestamp *ts_grab, PSMove_timestamp *ts_retrieve)
+camera_control_query_frame( CameraControl* cc,
+                            PSMove_timestamp *ts_grab,
+                            PSMove_timestamp *ts_retrieve,
+                            enum PSMove_Bool *out_new_frame)
 {
     IplImage* result;
+    *out_new_frame = PSMove_False;
 
 #if defined(CAMERA_CONTROL_USE_CL_DRIVER)
     // assign buffer-pointer to address of buffer
@@ -244,7 +250,7 @@ camera_control_query_frame(CameraControl* cc,
     const CvArr** src = (const CvArr**) &cc->frame4ch;
     CvArr** dst = (CvArr**) &cc->frame3ch;
     cvMixChannels(src, 1, dst, 1, from_to, 3);
-
+    *out_new_frame= PSMove_True;
     result = cc->frame3ch;
 #elif defined(CAMERA_CONTROL_USE_PS3EYE_DRIVER)
     int stride = 0;
@@ -253,18 +259,23 @@ camera_control_query_frame(CameraControl* cc,
     // Convert pixels from camera to BGR
     unsigned char *cvpixels;
     cvGetRawData(cc->framebgr, &cvpixels, 0, 0);
-    yuv422_to_bgr(pixels, stride, cvpixels, cc->width, cc->height);
+    if (pixels != NULL)
+    {
+        yuv422_to_bgr(pixels, stride, cvpixels, cc->width, cc->height);
+        *out_new_frame = PSMove_True;
+    }
 
     result = cc->framebgr;
 #else
     cvGrabFrame(cc->capture);
     if (ts_grab != NULL) {
-        *ts_grab = _psmove_timestamp();
+        *ts_grab = psmove_timestamp();
     }
     result = cvRetrieveFrame(cc->capture, 0);
     if (ts_retrieve != NULL) {
-        *ts_retrieve = _psmove_timestamp();
+        *ts_retrieve = psmove_timestamp();
     }
+    *out_new_frame = PSMove_True;
 #endif
 
     if (cc->deinterlace == PSMove_True) {

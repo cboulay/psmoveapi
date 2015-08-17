@@ -31,7 +31,6 @@
 #define PSMOVE_TRACKER_H
 
 #include "psmove.h"
-#include "psmove_config.h"
 
 #ifdef __cplusplus
 extern "C" {

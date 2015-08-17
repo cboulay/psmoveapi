@@ -29,7 +29,6 @@
 
 
 
-#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -62,6 +61,11 @@ setup(struct TestContext *context)
 {
     int i;
 
+    if (!psmove_init(PSMOVE_CURRENT_VERSION)) {
+        fprintf(stderr, "PS Move API init failed (wrong version?)\n");
+        exit(1);
+    }
+
     context->count = psmove_count_connected();
     context->tracker = psmove_tracker_new();
     psmove_tracker_set_mirror(context->tracker, PSMove_True);
@@ -88,6 +92,7 @@ teardown(struct TestContext *context)
 
     free(context->moves);
     psmove_tracker_free(context->tracker);
+    psmove_shutdown();
 }
 
 #define ITERATIONS 500
@@ -112,7 +117,7 @@ main(int argc, char *argv[])
     printf("\n -- PS Move API Camera Performance Test -- \n");
 
     printf("\nTesting frame grab performance\n");
-    FILE *fp = fopen("capture_grab.csv", "w");
+    FILE *fp = psmove_file_open("capture_grab.csv", "w");
     assert(fp != NULL);
     fprintf(fp, "frame,grab,retrieve,converted");
     int j;
@@ -121,8 +126,8 @@ main(int argc, char *argv[])
     }
     fprintf(fp, ",start,diff\n");
     int i;
-    float first = _psmove_timestamp_value(_psmove_timestamp());
-    float last = 0;
+    double first = psmove_timestamp_value(psmove_timestamp());
+    double last = 0;
     for (i=0; i<ITERATIONS; i++) {
         if (i % 50 == 0)
         {
@@ -135,17 +140,17 @@ main(int argc, char *argv[])
                 &(context.capture_retrieve),
                 &(context.capture_converted));
 
-        float start =  _psmove_timestamp_value(_psmove_timestamp());
-        float grab = _psmove_timestamp_value(_psmove_timestamp_diff(context.capture_grab, context.capture_begin));
-        float retrieve = _psmove_timestamp_value(_psmove_timestamp_diff(context.capture_retrieve, context.capture_grab));
-        float converted = _psmove_timestamp_value(_psmove_timestamp_diff(context.capture_converted, context.capture_retrieve));
+        double start =  psmove_timestamp_value(psmove_timestamp());
+        double grab = psmove_timestamp_value(psmove_timestamp_diff(context.capture_grab, context.capture_begin));
+        double retrieve = psmove_timestamp_value(psmove_timestamp_diff(context.capture_retrieve, context.capture_grab));
+        double converted = psmove_timestamp_value(psmove_timestamp_diff(context.capture_converted, context.capture_retrieve));
         fprintf(fp, "%d,%.10f,%.10f,%.10f", i, grab, retrieve, converted);
 
         for (j=0; j<context.count; j++) {
-            PSMove_timestamp track_begin = _psmove_timestamp();
+            PSMove_timestamp track_begin = psmove_timestamp();
             psmove_tracker_update(context.tracker, context.moves[j]);
-            PSMove_timestamp track_end = _psmove_timestamp();
-            float tracking = _psmove_timestamp_value(_psmove_timestamp_diff(track_end, track_begin));
+            PSMove_timestamp track_end = psmove_timestamp();
+            float tracking = (float)psmove_timestamp_value(psmove_timestamp_diff(track_end, track_begin));
             fprintf(fp, ",%.10f", tracking);
         }
         fprintf(fp, ",%.10f,%.10f\n", start, (start-last));
@@ -154,13 +159,13 @@ main(int argc, char *argv[])
         save(i, &context);
         last = start;
     }
-    fclose(fp);
+    psmove_file_close(fp);
 
     //printf("\nTesting SMART READ performance (rate-limited LED setting)\n");
     //printf("\nTesting BAD READ performance (continous LED setting)\n");
     //printf("\nTesting RAW READ performance (no LED setting)\n");
 
-    printf("%d frames captured in %f seconds (%.1f fps)\n", i, (last-first), i/(last-first));
+    printf("%d frames captured in %f seconds (%.1f fps)\n", i, (float)(last - first), (float)i / (float)(last - first));
     printf("\n");
 
     teardown(&context);

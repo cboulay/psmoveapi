@@ -31,7 +31,6 @@
 #include <stdio.h>
 
 #include <time.h>
-#include <unistd.h>
 #include <assert.h>
 
 #include "opencv2/core/core_c.h"
@@ -43,6 +42,12 @@
 
 int main(int arg, char** args) {
     int i;
+    
+    if (!psmove_init(PSMOVE_CURRENT_VERSION)) {
+        fprintf(stderr, "PS Move API init failed (wrong version?)\n");
+        exit(1);
+    }
+    
     int count = psmove_count_connected();
 
     printf("### Found %d controllers.\n", count);
@@ -74,7 +79,6 @@ int main(int arg, char** args) {
             printf("Calibrating controller %d...", i);
             fflush(stdout);
             result = psmove_tracker_enable(tracker, controllers[i]);
-
             if (result == Tracker_CALIBRATED) {
                 enum PSMove_Bool auto_update_leds =
                     psmove_tracker_get_auto_update_leds(tracker,
@@ -103,7 +107,7 @@ int main(int arg, char** args) {
             cvShowImage("live camera feed", frame);
         }
 
-        printf("x  , %6.2f, y  , %6.2f, r  , %6.2f, xcm, %6.2f, ycm, %6.2f, zcm, %6.2f\n",
+        printf("x  , %6.2f, y  , %6.2f, r  , %6.2f\nxcm, %6.2f, ycm, %6.2f, zcm, %6.2f\n",
         	x, y, r, xcm, ycm, zcm);
 
         for (i=0; i<count; i++) {
@@ -122,6 +126,7 @@ int main(int arg, char** args) {
 
     psmove_tracker_free(tracker);
     free(controllers);
+    psmove_shutdown();
     return 0;
 }
 
