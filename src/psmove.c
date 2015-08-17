@@ -2012,8 +2012,10 @@ enum PSMove_Bool
 psmove_load_magnetometer_calibration(PSMove *move)
 {
 	enum PSMove_Bool success = PSMove_False;
-    
-	psmove_goto_if_fail(move != NULL, finish);
+    if (move != NULL) {
+        return success;
+    }
+
     psmove_reset_magnetometer_calibration(move);
 
     char *filename = psmove_get_magnetometer_calibration_filename(move);
@@ -2034,48 +2036,35 @@ psmove_load_magnetometer_calibration(PSMove *move)
     float f_min, f_max;
     int result;
 
-	result = fscanf_s(fp, "%2s,%2s,%2s\n",
-		s_mx, _countof(s_mx),
-		s_my, _countof(s_my),
-		s_mz, _countof(s_mz));
+	result = fscanf(fp, "%2s,%2s,%2s\n", s_mx, s_my, s_mz);
 	psmove_goto_if_fail(result == 3, finish);
 	psmove_goto_if_fail(strcmp(s_mx, "mx") == 0, finish);
 	psmove_goto_if_fail(strcmp(s_my, "my") == 0, finish);
 	psmove_goto_if_fail(strcmp(s_mz, "mz") == 0, finish);
 
-	result = fscanf_s(fp, "%f,%f,%f\n", 
-		&mx, &my, &mz);
+	result = fscanf(fp, "%f,%f,%f\n", &mx, &my, &mz);
 	psmove_goto_if_fail(result == 3, finish);
 	move->magnetometer_calibration_direction = psmove_3axisvector_xyz(mx, my, mz);
 
-	result = fscanf_s(fp, "%4s,%3s,%3s\n", 
-		s_axis, _countof(s_axis), 
-		s_min, _countof(s_min),
-		s_max, _countof(s_max));
+	result = fscanf(fp, "%4s,%3s,%3s\n", s_axis, s_min, s_max);
     psmove_goto_if_fail(result == 3, finish);
     psmove_goto_if_fail(strcmp(s_axis, "axis") == 0, finish);
     psmove_goto_if_fail(strcmp(s_min, "min") == 0, finish);
     psmove_goto_if_fail(strcmp(s_max, "max") == 0, finish);
 
-    result = fscanf_s(fp, "%c,%f,%f\n", 
-		&c_axis, 1, 
-		&f_min, 
-		&f_max);
+    result = fscanf(fp, "%c,%f,%f\n", &c_axis, &f_min, &f_max);
     psmove_goto_if_fail(result == 3, finish);
     psmove_goto_if_fail(c_axis == 'x', finish);
     move->magnetometer_min.x = f_min;
     move->magnetometer_max.x = f_max;
 
-    result = fscanf_s(fp, "%c,%f,%f\n", &c_axis, 1, &f_min, &f_max);
+    result = fscanf(fp, "%c,%f,%f\n", &c_axis, &f_min, &f_max);
     psmove_goto_if_fail(result == 3, finish);
     psmove_goto_if_fail(c_axis == 'y', finish);
     move->magnetometer_min.y = f_min;
     move->magnetometer_max.y = f_max;
 
-    result = fscanf_s(fp, "%c,%f,%f\n", 
-		&c_axis, 1, 
-		&f_min, 
-		&f_max);
+    result = fscanf(fp, "%c,%f,%f\n", &c_axis, &f_min, &f_max);
     psmove_goto_if_fail(result == 3, finish);
     psmove_goto_if_fail(c_axis == 'z', finish);
     move->magnetometer_min.z = f_min;

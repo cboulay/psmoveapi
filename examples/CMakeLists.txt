@@ -49,7 +49,11 @@ endif()
 
 # C test programs
 if(PSMOVE_BUILD_TESTS)
-    foreach(TESTNAME led_update read_performance gyroscope_error responsiveness extension led_pwm_frequency)
+    set(testnames led_update read_performance responsiveness extension led_pwm_frequency)
+    IF(MSVC)
+        list(APPEND testnames gyroscope_error)
+    ENDIF()
+    foreach(TESTNAME ${testnames})
         add_executable(test_${TESTNAME} ${CMAKE_CURRENT_LIST_DIR}/c/test_${TESTNAME}.c)
         target_link_libraries(test_${TESTNAME} psmoveapi)
     endforeach(TESTNAME)

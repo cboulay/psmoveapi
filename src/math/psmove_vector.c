@@ -181,25 +181,25 @@ psmove_3axisvector_cross(const PSMove_3AxisVector *a, const PSMove_3AxisVector *
 float
 psmove_3axisvector_min_component(const PSMove_3AxisVector *v)
 {
-	return min(min(v->x, v->y), v->z);
+	return fmin(fmin(v->x, v->y), v->z);
 }
 
 float
 psmove_3axisvector_max_component(const PSMove_3AxisVector *v)
 {
-	return max(max(v->x, v->y), v->z);
+	return fmax(fmax(v->x, v->y), v->z);
 }
 
 PSMove_3AxisVector
 psmove_3axisvector_min_vector(const PSMove_3AxisVector *a, const PSMove_3AxisVector *b)
 {
-	return psmove_3axisvector_xyz(min(a->x, b->x), min(a->y, b->y), min(a->z, b->z));
+	return psmove_3axisvector_xyz(fmin(a->x, b->x), fmin(a->y, b->y), fmin(a->z, b->z));
 }
 
 PSMove_3AxisVector
 psmove_3axisvector_max_vector(const PSMove_3AxisVector *a, const PSMove_3AxisVector *b)
 {
-	return psmove_3axisvector_xyz(max(a->x, b->x), max(a->y, b->y), max(a->z, b->z));
+	return psmove_3axisvector_xyz(fmax(a->x, b->x), fmax(a->y, b->y), fmax(a->z, b->z));
 }
 
 float

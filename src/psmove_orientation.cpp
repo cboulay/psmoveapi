@@ -375,6 +375,19 @@ psmove_orientation_update(PSMoveOrientation *orientation_state)
 					Eigen::Vector3f(a.x, a.y, a.z));
 			}
 			break;
+            case OrientationFusion_MadgwickMARG:
+            {
+                PSMove_3AxisVector m = psmove_orientation_get_magnetometer_normalized_vector(orientation_state);
+                PSMove_3AxisVector a = psmove_orientation_get_accelerometer_normalized_vector(orientation_state, (enum PSMove_Frame)(frame_half));
+                PSMove_3AxisVector omega = psmove_orientation_get_gyroscope_vector(orientation_state, (enum PSMove_Frame)(frame_half));
+                _psmove_orientation_fusion_madgwick_marg_update(orientation_state, deltaT,
+                                                                /* Gyroscope */
+                                                                Eigen::Vector3f(omega.x, omega.y, omega.z),
+                                                                /* Accelerometer */
+                                                                Eigen::Vector3f(a.x, a.y, a.z),
+                                                                /* Magnetometer */
+                                                                Eigen::Vector3f(m.x, m.y, m.z));
+            }
 		case OrientationFusion_ComplementaryMARG:
 			{
 				PSMove_3AxisVector m= 
