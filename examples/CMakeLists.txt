@@ -51,11 +51,16 @@ endif()
 
 # C test programs
 if(PSMOVE_BUILD_TESTS)
-    foreach(TESTNAME led_update read_performance calibration responsiveness extension led_pwm_frequency)
+    foreach(TESTNAME led_update read_performance gyroscope_error responsiveness extension led_pwm_frequency)
         add_executable(test_${TESTNAME} ${CMAKE_CURRENT_LIST_DIR}/c/test_${TESTNAME}.c ${MSVC_SRCS})
         target_link_libraries(test_${TESTNAME} psmoveapi ${MSVC_LIBS})
     endforeach(TESTNAME)
 
+    foreach(TESTNAME calibration)
+        add_executable(test_${TESTNAME} ${CMAKE_CURRENT_LIST_DIR}/c/test_${TESTNAME}.cpp ${MSVC_SRCS})
+        target_link_libraries(test_${TESTNAME} psmoveapi ${MSVC_LIBS})
+    endforeach(TESTNAME)
+	
     if(PSMOVE_BUILD_TRACKER)
         foreach(TESTNAME tracker capture_performance record_video roi_size end2end_latency fusion)
             add_executable(test_${TESTNAME} ${CMAKE_CURRENT_LIST_DIR}/c/test_${TESTNAME}.c ${MSVC_SRCS})

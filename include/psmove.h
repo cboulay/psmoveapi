@@ -161,6 +161,11 @@ enum PSMove_RemoteConfig {
 struct _PSMove;
 typedef struct _PSMove PSMove; /*!< Handle to a PS Move Controller.
                                     Obtained via psmove_connect_by_id() */
+struct _PSMoveOrientation;
+typedef struct _PSMoveOrientation PSMoveOrientation;
+
+struct _PSMove_3AxisVector;
+typedef struct _PSMove_3AxisVector PSMove_3AxisVector;
 #endif
 
 /*! Size of buffer for holding the extension device's data as reported by the Move */
@@ -894,6 +899,29 @@ ADDCALL psmove_get_gyroscope_frame(PSMove *move, enum PSMove_Frame frame,
         float *gx, float *gy, float *gz);
 
 /**
+ * \brief Get the raw magnetometer reading from the PS Move.
+ *
+ * This function reads the raw sensor values from the controller,
+ * pointing to magnetic north.
+ *
+ * The result value range is -2048..+2047. The magnetometer is located
+ * roughly below the glowing orb - you can glitch the values with a
+ * strong kitchen magnet by moving it around the bottom ring of the orb.
+ * You can detect if a magnet is nearby by checking if any two values
+ * stay at zero for several frames.
+ *
+ * You need to call psmove_poll() first to read new data from the
+ * controller.
+ *
+ * \param move A valid \ref PSMove handle
+ * \param mx Pointer to store the raw X axis reading, or \c NULL
+ * \param my Pointer to store the raw Y axis reading, or \c NULL
+ * \param mz Pointer to store the raw Z axis reading, or \c NULL
+ **/
+ADDAPI void
+ADDCALL psmove_get_magnetometer(PSMove *move, int *mx, int *my, int *mz);
+
+/**
  * \brief Get the normalized magnetometer vector from the controller.
  *
  * The normalized magnetometer vector is a three-axis vector where each
@@ -911,8 +939,25 @@ ADDCALL psmove_get_gyroscope_frame(PSMove *move, enum PSMove_Frame frame,
  * \param mz Pointer to store the Z axis reading, or \c NULL
  **/
 ADDAPI void
-ADDCALL psmove_get_magnetometer_vector(PSMove *move,
-        float *mx, float *my, float *mz);
+ADDCALL psmove_get_magnetometer_vector(PSMove *move, float *mx, float *my, float *mz);
+
+/**
+ * \brief Get the normalized magnetometer vector from the controller.
+ *
+ * The normalized magnetometer vector is a three-axis vector where each
+ * component is in the range [-1,+1], including both endpoints. The range
+ * will be dynamically determined based on the highest (and lowest) value
+ * observed during runtime. To get the raw magnetometer readings, use
+ * psmove_get_magnetometer().
+ *
+ * You need to call psmove_poll() first to read new data from the
+ * controller.
+ *
+ * \param move A valid \ref PSMove handle
+ * \param m Pointer to \ref PSMove_3AxisVector 
+ **/
+ADDAPI void
+ADDCALL psmove_get_magnetometer_3axisvector(PSMove *move, PSMove_3AxisVector *out_m);
 
 /**
  * \brief Check if calibration is available on this controller.
@@ -1014,6 +1059,18 @@ ADDCALL psmove_get_orientation(PSMove *move,
         float *w, float *x, float *y, float *z);
 
 /**
+ * \brief Get a handle to the orientation state.
+ *
+ * Used to directly access the orientation state to set advanced orientation features.
+ *
+ * \param move A valid \ref PSMove handle
+ *
+ * \return \ref PSMoveOrientation if orientation is enabled, NULL otherwise
+ **/
+ADDAPI PSMoveOrientation *
+ADDCALL psmove_get_orientation_state(PSMove *move);
+
+/**
  * \brief Reset the current orientation quaternion.
  *
  * This will set the current 3D rotation of the PS Move controller as
@@ -1030,6 +1087,17 @@ ADDCALL psmove_get_orientation(PSMove *move,
 ADDAPI void
 ADDCALL psmove_reset_orientation(PSMove *move);
 
+/**
+* \brief Get the earth magnetometer direction.
+*
+* This returns the direction of the gravitational field in the identity pose during calibration.
+*
+* \param move A valid \ref PSMove handle
+*
+* \return The expected direction of gravity
+**/
+ADDAPI void
+ADDCALL psmove_get_gravity_calibration_direction(PSMove *move, PSMove_3AxisVector *out_a);
 
 /**
  * \brief Reset the magnetometer calibration state.
@@ -1065,8 +1133,32 @@ ADDCALL psmove_save_magnetometer_calibration(PSMove *move);
  *
  * \return The smallest raw sensor range difference of all three axes
  **/
-ADDAPI int
+ADDAPI float
 ADDCALL psmove_get_magnetometer_calibration_range(PSMove *move);
+
+/**
+* \brief Get the calibration magnetometer direction.
+*
+* This returns the direction of the magnetic field in the identity pose.
+*
+* \param move A valid \ref PSMove handle
+*
+* \return The direction of the magnetic field
+**/
+ADDAPI void
+ADDCALL psmove_get_magnetometer_calibration_direction(PSMove *move, PSMove_3AxisVector *out_m);
+
+/**
+* \brief Set the calibration magnetometer direction.
+*
+* This sets the direction of the magnetic field in the identity pose.
+* This is typically only set during calibration.
+*
+* \param move A valid \ref PSMove handle
+* \param m A valid \ref PSMoveVector
+**/
+ADDAPI void
+ADDCALL psmove_set_magnetometer_calibration_direction(PSMove *move, PSMove_3AxisVector *m);
 
 /**
  * \brief Disconnect from the PS Move and release resources.
@@ -1100,7 +1192,6 @@ ADDCALL psmove_disconnect(PSMove *move);
  **/
 ADDAPI void
 ADDCALL psmove_reinit();
-
 
 #ifdef __cplusplus
 }
