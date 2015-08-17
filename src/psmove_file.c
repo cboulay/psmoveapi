@@ -63,7 +63,9 @@ FILE* psmove_file_open(const char *filename, const char *mode)
 
 void psmove_file_close(FILE* file_pointer)
 {
-	fclose(file_pointer);
+    if (file_pointer != NULL) {
+        fclose(file_pointer);
+    }
 }
 
 char *
