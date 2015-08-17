@@ -180,7 +180,7 @@ psmove_fusion_get_modelview_matrix(PSMoveFusion *fusion, PSMove *move)
         qw *= -1.;
         qx *= -1.;
     }
-    glm::quat quaternion(qw, qx, qy, qz);
+    glm::quat quaternion(qz, qy, qx, qw);
 
     float x, y, z;
     psmove_fusion_get_position(fusion, move, &x, &y, &z);
