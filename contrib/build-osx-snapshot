@@ -29,6 +29,12 @@ if [ ! -f $PSMOVEAPI_CHECKOUT/CMakeLists.txt ]; then
     exit 1
 fi
 
+# Download the eigen library needed for orientation estimation
+(
+    cd $PSMOVEAPI_CHECKOUT/external
+    hg clone https://bitbucket.org/eigen/eigen
+)
+
 # Build libusb-1.0 as universal static library
 # needed for the PS3EYEDriver to access the PSEye
 # otherwise we'd dynamically link against some the Homebrew libusb

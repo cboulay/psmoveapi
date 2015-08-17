@@ -4,3 +4,4 @@ bindings/processing
 external/opencv
 external/libusb*
 external/SDL2
+external/eigen

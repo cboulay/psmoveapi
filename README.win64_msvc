@@ -7,12 +7,19 @@ Requirements
   http://www.cmake.org/cmake/resources/software.html
 - Git
   http://code.google.com/p/msysgit/
+- Mercurial
+  https://mercurial.selenic.com/wiki/Download
 
 1. Clone the PS Move API repository
     `git clone --recursive https://github.com/cboulay/psmoveapi.git`
     `cd psmoveapi`
     
-2. Build libusb-1.0
+2. Eigen
+    Required - Necessary for orientation algorithms
+    `cd external`
+    `hg clone https://bitbucket.org/eigen/eigen`
+    
+3. Build libusb-1.0
     Optional - Only required if you are building the positional tracker.
     Open psmoveapi\external\libusb-1.0\msvc\libusb_2013.sln
     Change the target to Release x64 (at the top of the Visual Studio window).
@@ -23,7 +30,7 @@ Requirements
     Click OK
     Right-click on libusb-1.0 (static) and Build.
     
-3. OpenCV
+4. OpenCV
     Optional - Only required if you are building the positional tracker.
     Still in `psmoveapi/external`
     `git clone --depth 1 --branch 2.4.11 git://github.com/Itseez/opencv.git`
@@ -38,7 +45,7 @@ Requirements
     
     Note: OpenCV 2.4.11 is required only for MSVC builds of the psmoveapi; Linux and Mac builds of the psmoveapi require OpenCV 3.
     
-4. SDL2
+5. SDL2
     Optional - Only required if you are building the OpenGL examples.
     Still in `psmoveapi/external`
     `cd SDL2`
@@ -50,7 +57,7 @@ Requirements
     Change the target to Release (at the top of the VS window).
     Build the solution (Press F7).
 
-4. Build psmoveapi
+6. Build psmoveapi
 
     Still in the VS2013 command prompt:
 
@@ -64,9 +71,9 @@ Requirements
     Change the target to Release.
     Build the solution (Press F7).
     
-5. Read [this Wiki](https://github.com/cboulay/psmove-ue4/wiki) for windows-specific information on pairing and connecting the psmove controller and on using the PS3Eye camera.
+7. Read [this Wiki](https://github.com/cboulay/psmove-ue4/wiki) for windows-specific information on pairing and connecting the psmove controller and on using the PS3Eye camera.
 
-6. Start one of the desired test applications
+8. Start one of the desired test applications
 
     If you previously chose to build the example applications (which is the
     default), you can then run
