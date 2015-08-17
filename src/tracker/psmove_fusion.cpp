@@ -128,6 +128,13 @@ psmove_fusion_update_transform(PSMoveFusion *fusion, float *pos_xyz, float *quat
     */
 }
 
+void
+psmove_fusion_reset_transform(PSMoveFusion *fusion)
+{
+    fusion->physical_xf = glm::mat4(1.0f);   // Identity matrix.
+    fusion->total_xf = fusion->physical_xf;  // For now there is no additional transform.
+}
+
 PSMoveFusion *
 psmove_fusion_new(PSMoveTracker *tracker, float z_near, float z_far)
 {
@@ -193,6 +200,68 @@ psmove_fusion_get_transform_matrix(PSMoveFusion *fusion)
 
 void
 psmove_fusion_get_position(PSMoveFusion *fusion, PSMove *move,
+float *x, float *y, float *z)
+{
+    psmove_return_if_fail(fusion != NULL);
+    psmove_return_if_fail(move != NULL);
+
+    float camX, camY, camR;
+    psmove_tracker_get_position(fusion->tracker, move, &camX, &camY, &camR);
+
+    float winX = (float)camX;
+    float winY = fusion->height - (float)camY;
+    float winZ = .5; /* start value for binary search */
+
+    float targetWidth = 2.*camR;
+
+    glm::vec3 obj;
+
+    /* Binary search for the best distance based on the current projection */
+    float step = .25;
+    while (step > PSMOVE_FUSION_STEP_EPSILON) {
+        /* Calculate center position of sphere */
+        obj = glm::unProject(glm::vec3(winX, winY, winZ),
+            glm::mat4(), fusion->projection, fusion->viewport);
+
+        /* Project left edge center of sphere */
+        glm::vec3 left = glm::project(glm::vec3(obj.x - .5, obj.y, obj.z),
+            glm::mat4(), fusion->projection, fusion->viewport);
+
+        /* Project right edge center of sphere */
+        glm::vec3 right = glm::project(glm::vec3(obj.x + .5, obj.y, obj.z),
+            glm::mat4(), fusion->projection, fusion->viewport);
+
+        float width = (right.x - left.x);
+        if (width > targetWidth) {
+            /* Too near */
+            winZ += step;
+        }
+        else if (width < targetWidth) {
+            /* Too far away */
+            winZ -= step;
+        }
+        else {
+            /* Perfect fit */
+            break;
+        }
+        step *= .5;
+    }
+
+    if (x != NULL) {
+        *x = obj.x;
+    }
+
+    if (y != NULL) {
+        *y = obj.y;
+    }
+
+    if (z != NULL) {
+        *z = obj.z;
+    }
+}
+
+void
+psmove_fusion_get_location(PSMoveFusion *fusion, PSMove *move,
         float *x, float *y, float *z)
 {
     psmove_return_if_fail(fusion != NULL);
@@ -203,14 +272,14 @@ psmove_fusion_get_position(PSMoveFusion *fusion, PSMove *move,
 }
 
 void
-psmove_fusion_get_transformed_position(PSMoveFusion *fusion, PSMove *move,
+psmove_fusion_get_transformed_location(PSMoveFusion *fusion, PSMove *move,
 float *x, float *y, float *z)
 {
     float xcm, ycm, zcm;
-    psmove_fusion_get_position(fusion, move, &xcm, &ycm, &zcm);
+    psmove_fusion_get_location(fusion, move, &xcm, &ycm, &zcm);
 
-    glm::vec4 position = glm::vec4(glm::vec3(xcm, ycm, zcm), 1.0f);
-    glm::vec4 transformed = fusion->total_xf * position;
+    glm::vec4 location = glm::vec4(glm::vec3(xcm, ycm, zcm), 1.0f);
+    glm::vec4 transformed = fusion->total_xf * location;
 
     *x = transformed[0];
     *y = transformed[1];

@@ -143,10 +143,10 @@ int main(int arg, char** args) {
             */
             
             float xcm, ycm, zcm;
-            psmove_fusion_get_position(fusion, controllers[i], &xcm, &ycm, &zcm);
+            psmove_fusion_get_location(fusion, controllers[i], &xcm, &ycm, &zcm);
 
             float xf_xcm, xf_ycm, xf_zcm;
-            psmove_fusion_get_transformed_position(fusion, controllers[i], &xf_xcm, &xf_ycm, &xf_zcm);
+            psmove_fusion_get_transformed_location(fusion, controllers[i], &xf_xcm, &xf_ycm, &xf_zcm);
             printf("PSEye: %5.2f, %5.2f, %5.2f\t Transformed: %5.2f, %5.2f, %5.2f\n", xcm, ycm, zcm, xf_xcm, xf_ycm, xf_zcm);
         }
     }

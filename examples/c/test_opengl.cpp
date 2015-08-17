@@ -109,7 +109,6 @@ Tracker::Tracker()
     m_fusion = psmove_fusion_new(m_tracker, 1., 1000.);
 
     psmove_tracker_set_mirror(m_tracker, PSMove_True);
-    psmove_tracker_set_exposure(m_tracker, Exposure_LOW);
 
     m_moves = (PSMove**)calloc(m_count, sizeof(PSMove*));
     m_items = (int*)calloc(m_count, sizeof(int));
@@ -139,6 +138,8 @@ Tracker::~Tracker()
 void
 Tracker::update()
 {
+    psmove_tracker_update_image(m_tracker);
+    psmove_tracker_update(m_tracker, NULL);
     for (int i=0; i<m_count; i++) {
         while (psmove_poll(m_moves[i]));
 
@@ -184,9 +185,6 @@ Tracker::update()
             m_offset = Point3D(0., 0., 0.);
         }
     }
-
-    psmove_tracker_update_image(m_tracker);
-    psmove_tracker_update(m_tracker, NULL);
 }
 
 void
