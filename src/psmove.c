@@ -2012,7 +2012,8 @@ enum PSMove_Bool
 psmove_load_magnetometer_calibration(PSMove *move)
 {
 	enum PSMove_Bool success = PSMove_False;
-    if (move != NULL) {
+    
+	if (move == NULL) {
         return success;
     }
 
