@@ -685,12 +685,7 @@ psmove_tracker_new_with_camera_and_settings(int camera, PSMoveTrackerInitSetting
         return NULL;
     }
 
-    // Load the camera-calibration file from disk. Sets cc->mapx, mapy, focl_x, focl_y
-    char *intrinsics_xml = psmove_util_get_file_path(INTRINSICS_XML);
-    char *distortion_xml = psmove_util_get_file_path(DISTORTION_XML);
-    camera_control_read_calibration(tracker->cc, intrinsics_xml, distortion_xml);
-    free(intrinsics_xml);
-    free(distortion_xml);
+    psmove_tracker_load_distortion(tracker);
 
     // backup the systems settings, if not already backuped
     char *filename = psmove_util_get_file_path(PSEYE_BACKUP_FILE);
@@ -813,6 +808,23 @@ psmove_tracker_new_with_camera_and_settings(int camera, PSMoveTrackerInitSetting
 #endif
 
 	return tracker;
+}
+
+void
+psmove_tracker_load_distortion(PSMoveTracker *tracker)
+{
+    // Load the camera-calibration file from disk. Sets cc->mapx, mapy, focl_x, focl_y
+    char *intrinsics_xml = psmove_util_get_file_path(INTRINSICS_XML);
+    char *distortion_xml = psmove_util_get_file_path(DISTORTION_XML);
+    camera_control_read_calibration(tracker->cc, intrinsics_xml, distortion_xml);
+    free(intrinsics_xml);
+    free(distortion_xml);
+}
+
+void
+psmove_tracker_reset_distortion(PSMoveTracker *tracker)
+{
+    camera_control_reset_calibration(tracker->cc);
 }
 
 #define N_PRESET_COLORS 5

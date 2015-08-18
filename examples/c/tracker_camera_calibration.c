@@ -88,6 +88,7 @@ int main(int arg, char** args) {
     IplImage *image;
     
     PSMoveTracker* tracker = psmove_tracker_new();
+    psmove_tracker_reset_distortion(tracker);
     psmove_tracker_set_exposure(tracker, Exposure_HIGH);
 
     CvPoint2D32f *corners = (CvPoint2D32f*)calloc(board_n, sizeof(CvPoint2D32f));
@@ -259,6 +260,7 @@ int main(int arg, char** args) {
 
     free(intrinsics_xml);
     free(distortion_xml);
+    psmove_tracker_free(tracker);
     psmove_shutdown();
 
     return 0;

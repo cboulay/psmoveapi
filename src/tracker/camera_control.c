@@ -249,6 +249,19 @@ camera_control_read_calibration(CameraControl* cc,
     }
 }
 
+void
+camera_control_reset_calibration(CameraControl* cc)
+{
+    if (cc->mapx) {
+        cvReleaseImage(&cc->mapx);
+    }
+    if (cc->mapy) {
+        cvReleaseImage(&cc->mapy);
+    }
+    cc->focl_x = DEFAULT_FOCAL_LENGTH;
+    cc->focl_y = DEFAULT_FOCAL_LENGTH;
+}
+
 IplImage *
 camera_control_query_frame( CameraControl* cc,
                             PSMove_timestamp *ts_grab,

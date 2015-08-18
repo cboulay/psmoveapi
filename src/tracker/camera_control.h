@@ -51,6 +51,9 @@ ADDCALL camera_control_read_calibration(CameraControl* cc,
         char* intrinsicsFile, char* distortionFile);
 
 ADDAPI void
+ADDCALL camera_control_reset_calibration(CameraControl* cc);
+
+ADDAPI void
 ADDCALL camera_control_set_deinterlace(CameraControl *cc,
         enum PSMove_Bool enabled);
 
