@@ -185,7 +185,7 @@ psmove_fusion_get_modelview_matrix(PSMoveFusion *fusion, PSMove *move)
 
 	// When the tracker is has mirroring turned OFF, our image will appear flipped
 	// There for we should flip the rotation about the 
-	glm::vec3 s= (!psmove_tracker_get_mirror(fusion->tracker)) ? glm::vec3(-1, 1, 1) : glm::vec3(1, 1, 1);
+	glm::vec3 s= (!psmove_tracker_get_mirror(fusion->tracker)) ? glm::vec3(-1, 1, -1) : glm::vec3(1, 1, -1);
 	glm::mat4 scale = glm::scale(glm::mat4(), s);
 
 	// Combine the transforms in reverse order we want them applied

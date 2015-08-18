@@ -236,7 +236,7 @@ Tracker::render()
     glMatrixMode(GL_PROJECTION);
     glLoadMatrixf(psmove_fusion_get_projection_matrix(m_fusion));
 
-    /* Render the trace */
+    /* Render the trace (when cross is pressed) */
     if (m_trace.size()) {
         Point3D center = m_trace[0];
         glMatrixMode(GL_MODELVIEW);
@@ -263,6 +263,7 @@ Tracker::render()
         glDisable(GL_LIGHTING);
     }
 
+    /* Render the controllers */
     for (int i=0; i<m_count; i++) {
         glMatrixMode(GL_MODELVIEW);
         glLoadMatrixf(psmove_fusion_get_modelview_matrix(m_fusion, m_moves[i]));
