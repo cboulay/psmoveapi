@@ -1302,14 +1302,6 @@ psmove_tracker_enable_with_color_internal(PSMoveTracker *tracker, PSMove *move,
             tc->y_off = YORIGIN_CM;
             tc->z_off = ZORIGIN_CM;
 
-            tc->x_off = XORIGIN_CM;
-            tc->y_off = YORIGIN_CM;
-            tc->z_off = ZORIGIN_CM;
-
-            tc->x_off = XORIGIN_CM;
-            tc->y_off = YORIGIN_CM;
-            tc->z_off = ZORIGIN_CM;
-
             return Tracker_CALIBRATED;
         }
     }
