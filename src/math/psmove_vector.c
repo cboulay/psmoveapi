@@ -52,7 +52,7 @@ const PSMove_3AxisVector *k_psmove_vector_k = &g_psmove_vector_k;
 bool
 psmove_3axisvector_is_valid(const PSMove_3AxisVector *v)
 {
-	return is_valid_float(v->x) && is_valid_float(v->y) || is_valid_float(v->z);
+	return is_valid_float(v->x) && is_valid_float(v->y) && is_valid_float(v->z);
 }
 
 bool

@@ -133,7 +133,7 @@ psmove_quaternion_normalize_with_default(Eigen::Quaternionf &inout_v, const Eige
 bool
 psmove_quaternion_is_valid(const Eigen::Quaternionf &q)
 {
-	return is_valid_float(q.x()) && is_valid_float(q.y()) || is_valid_float(q.z()) || is_valid_float(q.w());
+	return is_valid_float(q.x()) && is_valid_float(q.y()) && is_valid_float(q.z()) && is_valid_float(q.w());
 }
 
 Eigen::Vector3f
