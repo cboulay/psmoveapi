@@ -29,7 +29,13 @@
 
 
 #include <stdio.h>
-#include <conio.h>
+/*
+#ifdef _MSC_VER
+    #include <conio.h>
+#else
+#include <curses.h>  // Need to link to libcurses
+#endif
+ */
 #include <stdlib.h>
 #include <assert.h>
 #include <math.h>
@@ -80,7 +86,7 @@ main(int argc, char* argv[])
 		int total_sample_count = 0;
 
 		fprintf(stdout, "Press any keyboard key once the controller is stable, pointing upright.\n");
-		_getch();
+        //getch();
 		fprintf(stdout, "Sampling gyro for %d seconds...\n", DESIRED_SAMPLING_TIME);
 
 		PSMove_timestamp last_update_time = psmove_timestamp();
@@ -165,10 +171,10 @@ main(int argc, char* argv[])
 			var_omega_x, var_omega_y, var_omega_z);
 		fprintf(stdout, "[Madgwick Parameters]\n");
 		fprintf(stdout, "[Beta] Max angular velocity variance (deg/s/s): %f\n",
-			max(max(var_omega_x, var_omega_y), var_omega_z));
+			fmax(fmax(var_omega_x, var_omega_y), var_omega_z));
 		fprintf(stdout, "[Zeta] Max drift rate (deg/s): %f\n",
-			max(max(fabs(theta_x / elapsed_time), fabs(theta_y / elapsed_time)), fabs(theta_z / elapsed_time)));
-		_getch();
+			fmax(fmax(fabs(theta_x / elapsed_time), fabs(theta_y / elapsed_time)), fabs(theta_z / elapsed_time)));
+        //getch();
     }
 	else
 	{
