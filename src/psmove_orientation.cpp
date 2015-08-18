@@ -375,7 +375,7 @@ psmove_orientation_update(PSMoveOrientation *orientation_state)
 					Eigen::Vector3f(a.x, a.y, a.z));
 			}
 			break;
-            case OrientationFusion_MadgwickMARG:
+		case OrientationFusion_MadgwickMARG:
             {
                 PSMove_3AxisVector m = psmove_orientation_get_magnetometer_normalized_vector(orientation_state);
                 PSMove_3AxisVector a = psmove_orientation_get_accelerometer_normalized_vector(orientation_state, (enum PSMove_Frame)(frame_half));
@@ -388,6 +388,7 @@ psmove_orientation_update(PSMoveOrientation *orientation_state)
                                                                 /* Magnetometer */
                                                                 Eigen::Vector3f(m.x, m.y, m.z));
             }
+			break;
 		case OrientationFusion_ComplementaryMARG:
 			{
 				PSMove_3AxisVector m= 

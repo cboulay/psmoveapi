@@ -173,20 +173,26 @@ psmove_fusion_get_modelview_matrix(PSMoveFusion *fusion, PSMove *move)
     psmove_return_val_if_fail(fusion != NULL, NULL);
     psmove_return_val_if_fail(move != NULL, NULL);
 
-    float qw, qx, qy, qz;
-    psmove_get_orientation(move, &qw, &qx, &qy, &qz);
-    if (!psmove_tracker_get_mirror(fusion->tracker)) {
-        /* Need to invert these two axes if mirroring is not enabled */
-        qw *= -1.;
-        qx *= -1.;
-    }
-    glm::quat quaternion(qz, qy, qx, qw);
+	// Get the orientation of the controller
+	glm::quat q;
+    psmove_get_orientation(move, &q.w, &q.x, &q.y, &q.z);
+	glm::mat4 rotation= glm::mat4_cast(q);
+    
+	// Get the position of the controller
+	glm::vec3 t;
+    psmove_fusion_get_position(fusion, move, &t.x, &t.y, &t.z);
+	glm::mat4 translation= glm::translate(glm::mat4(), t);
 
-    float x, y, z;
-    psmove_fusion_get_position(fusion, move, &x, &y, &z);
+	// When the tracker is has mirroring turned OFF, our image will appear flipped
+	// There for we should flip the rotation about the 
+	glm::vec3 s= (!psmove_tracker_get_mirror(fusion->tracker)) ? glm::vec3(-1, 1, 1) : glm::vec3(1, 1, 1);
+	glm::mat4 scale = glm::scale(glm::mat4(), s);
 
-    fusion->modelview = glm::translate(glm::mat4(),
-            glm::vec3(x, y, z)) * glm::mat4_cast(quaternion);
+	// Combine the transforms in reverse order we want them applied
+	// 1) Rotate the controller to match the orientation obtained by sensor fusion
+	// 2) Flip about the x-axis if video mirroring is turned OFF
+	// 3) Translate the controller to match the position given by tracking fusion
+    fusion->modelview = translation * scale * rotation;
 
     return glm::value_ptr(fusion->modelview);
 }

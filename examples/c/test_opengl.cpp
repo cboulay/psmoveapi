@@ -270,11 +270,22 @@ Tracker::render()
         if (m_items[i] == WIRE_CUBE) {
             glColor3f(1., 0., 0.);
             drawWireCube(1.f);
+
+			// Draw OpenGL axes
+			glBegin(GL_LINES);
+			glColor3f(1., 0., 0.);
+			glVertex3f(0.0, 0.0, 0.0); glVertex3f(2, 0, 0);
+			glColor3f(0., 1., 0.);
+			glVertex3f(0.0, 0.0, 0.0); glVertex3f(0, 2, 0);
+			glColor3f(0., 0., 1.);
+			glVertex3f(0.0, 0.0, 0.0); glVertex3f(0, 0, 2);
+			glEnd();
+
             glColor3f(0., 1., 0.);
 
             glPushMatrix();
             glScalef(1., 1., 4.5);
-            glTranslatef(0., 0., -.5);
+            glTranslatef(0., 0., .5);
             drawWireCube(1.);
             glPopMatrix();
 
