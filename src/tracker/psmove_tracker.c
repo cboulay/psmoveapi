@@ -564,7 +564,7 @@ psmove_tracker_set_exposure(PSMoveTracker *tracker,
             target_luminance = 25;
             break;
         case Exposure_HIGH:
-            target_luminance = 50;
+            target_luminance = 100;
             break;
         default:
             psmove_DEBUG("Invalid exposure mode: %d\n", exposure);
