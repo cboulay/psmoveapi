@@ -284,17 +284,28 @@ Tracker::render()
         glLoadMatrixf(psmove_fusion_get_modelview_matrix(m_fusion, m_moves[i]));
 
         glColor3f(1., 0., 0.);
-        drawWireCube(1.);
+        drawWireCube(1.f);
+
+		// Draw OpenGL axes
+		glBegin(GL_LINES);
+		glColor3f(1., 0., 0.);
+		glVertex3f(0.0, 0.0, 0.0); glVertex3f(2, 0, 0);
+		glColor3f(0., 1., 0.);
+		glVertex3f(0.0, 0.0, 0.0); glVertex3f(0, 2, 0);
+		glColor3f(0., 0., 1.);
+		glVertex3f(0.0, 0.0, 0.0); glVertex3f(0, 0, 2);
+		glEnd();
+
         glColor3f(0., 1., 0.);
 
         glPushMatrix();
         glScalef(1., 1., 4.5);
-        glTranslatef(0., 0., -.5);
+        glTranslatef(0., 0., .5);
         drawWireCube(1.);
         glPopMatrix();
 
         glColor3f(0., 0., 1.);
-        drawWireCube(3.);
+        drawWireCube(3.f);
     }
 
     glEnable(GL_LIGHTING);
