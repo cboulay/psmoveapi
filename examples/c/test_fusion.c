@@ -104,7 +104,9 @@ int main(int arg, char** args) {
         }
     }
 
+    // Setup the fusion tracker system. This also loads the physical transform from file if present.
     PSMoveFusion *fusion = psmove_fusion_new(tracker, 1., 1000.);
+    
 
     // You can also add an additional transform now or at any point
     float add_pos[3] = { 0, 0, 0 };
@@ -114,9 +116,9 @@ int main(int arg, char** args) {
     // For example, if you have a dk2_camera_pose as follows:
     // (px, py, pz, qw, qx, qy, qz)
     // 1.7896  -13.1017  -86.5323    0.9998    0.0041   -0.0158    0.0108
-    add_pos[0] = 1.7896; add_pos[1] = -13.1017; add_pos[2] = -86.5323;
-    add_quat[0] = 0.9998; add_quat[1] = 0.0041; add_quat[2] = -0.0158; add_quat[3] = 0.0108;
-    psmove_fusion_update_transform(fusion, add_pos, add_quat);
+    //add_pos[0] = 1.7896; add_pos[1] = -13.1017; add_pos[2] = -86.5323;
+    //add_quat[0] = 0.9998; add_quat[1] = 0.0041; add_quat[2] = -0.0158; add_quat[3] = 0.0108;
+    //psmove_fusion_update_transform(fusion, add_pos, add_quat);
 
     while ((cvWaitKey(1) & 0xFF) != 27) {
         psmove_tracker_update_image(tracker);
