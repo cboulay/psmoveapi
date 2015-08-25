@@ -33,7 +33,6 @@
 #include <assert.h>
 
 #include "psmove.h"
-#include "../src/psmove_orientation.h"
 #include "math/psmove_vector.h"
 #include "math/psmove_quaternion.hpp"
 #include "math/psmove_alignment.hpp"
@@ -63,21 +62,21 @@ main(int argc, char* argv[])
 		{
 			Eigen::Quaternionf mg_orientation = Eigen::Quaternionf::Identity();
 
-			PSMoveOrientation *orientation_state= psmove_get_orientation_state(move);
-
 			#ifdef PSMOVE_NATIVE_ORIENTATION
-			psmove_orientation_set_calibration_transform(orientation_state, k_psmove_identity_pose_upright);
-			psmove_orientation_set_sensor_data_transform(orientation_state, k_psmove_sensor_transform_identity);
+			psmove_set_calibration_transform(move, k_psmove_identity_pose_upright);
+			psmove_set_sensor_data_transform(move, k_psmove_sensor_transform_identity);
 			#else 
 			// This is the historical default
-			psmove_orientation_set_calibration_transform(orientation_state, k_psmove_identity_pose_laying_flat);
-			psmove_orientation_set_sensor_data_transform(orientation_state, k_psmove_sensor_transform_opengl);
+			psmove_set_calibration_transform(move, k_psmove_identity_pose_laying_flat);
+			psmove_set_sensor_data_transform(move, k_psmove_sensor_transform_opengl);
 			#endif
 
-			PSMove_3AxisVector calibration_a= psmove_orientation_get_gravity_calibration_direction(orientation_state);
+			PSMove_3AxisVector calibration_a; 
+			psmove_get_transformed_gravity_calibration_direction(move, &calibration_a);
 			Eigen::Vector3f gravity_calibration_direction = Eigen::Vector3f(calibration_a.x, calibration_a.y, calibration_a.z);
 
-			PSMove_3AxisVector calibration_m= psmove_orientation_get_magnetometer_calibration_direction(orientation_state);
+			PSMove_3AxisVector calibration_m; 
+			psmove_get_transformed_magnetometer_calibration_direction(move, &calibration_m);
 			Eigen::Vector3f magnetometer_calibration_direction = Eigen::Vector3f(calibration_m.x, calibration_m.y, calibration_m.z);
 			
 			while ((psmove_get_buttons(move) & Btn_PS) == 0) 
@@ -87,15 +86,18 @@ main(int argc, char* argv[])
 				if (res) 
 				{
 					// Get the sensor measurements in Right-Handed Cartesian Coordinates (a.k.a. OpenGL Coordinates)					
-					PSMove_3AxisVector w= psmove_orientation_get_gyroscope_vector(orientation_state, Frame_SecondHalf);
+					PSMove_3AxisVector w;
+					psmove_get_transformed_gyroscope_frame_3axisvector(move, Frame_SecondHalf, &w);
 					Eigen::Vector3f omega = Eigen::Vector3f(w.x, w.y, w.z);
 
-					PSMove_3AxisVector a= psmove_orientation_get_accelerometer_vector(orientation_state, Frame_SecondHalf);
+					PSMove_3AxisVector a;
+					psmove_get_transformed_accelerometer_frame_3axisvector(move, Frame_SecondHalf, &a);
 					Eigen::Vector3f acceleration = Eigen::Vector3f(a.x, a.y, a.z);
 					Eigen::Vector3f gravity_direction = acceleration;
 					gravity_direction.normalize();
 
-					PSMove_3AxisVector m= psmove_orientation_get_magnetometer_normalized_vector(orientation_state);
+					PSMove_3AxisVector m;
+					psmove_get_transformed_magnetometer_direction(move, &m);
 					Eigen::Vector3f magnetometer_direction = Eigen::Vector3f(m.x, m.y, m.z);
 
 					// Attempt to compute a quaternion that would align the calibration gravity and magnetometer directions

@@ -69,7 +69,7 @@ bool
 psmove_quaternion_test_euler_angles()
 {
 	UNIT_TEST_BEGIN("euler angles")
-		Eigen::Quaternionf q_pitch90 = psmove_quaternion_angle_axis(k_real_half_pi, Eigen::Vector3f::UnitX());
+	Eigen::Quaternionf q_pitch90 = psmove_quaternion_angle_axis(k_real_half_pi, Eigen::Vector3f::UnitX());
 	Eigen::Quaternionf q_yaw90 = psmove_quaternion_angle_axis(k_real_half_pi, Eigen::Vector3f::UnitY());
 	Eigen::Quaternionf q_roll90 = psmove_quaternion_angle_axis(k_real_half_pi, Eigen::Vector3f::UnitZ());
 

@@ -36,39 +36,8 @@
 
 #include "psmove_platform_config.h"
 #include "psmove_math.h"
+#include "psmove.h"
 
-//-- structures -----
-struct _PSMove_3AxisVector
-{
-	union {
-		struct
-		{
-			float x;
-			float y;
-			float z;
-		};
-		float v[3];
-	};
-};
-typedef struct _PSMove_3AxisVector PSMove_3AxisVector;
-
-struct _PSMove_3AxisTransform
-{
-	union {
-		struct
-		{
-			float row0[3];
-			float row1[3];
-			float row2[3];
-		};
-		float m[9];
-	};
-};
-typedef struct _PSMove_3AxisTransform PSMove_3AxisTransform;
-
-//-- pre-declarations -----
-
-//-- constants -----
 //-- interface -----
 #ifdef __cplusplus
 extern "C" {

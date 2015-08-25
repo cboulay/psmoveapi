@@ -27,6 +27,7 @@
 **/
 
 //-- includes ----
+#include "psmove.h"
 #include "psmove_math.h"
 #include "psmove_vector.h"
 #include <assert.h>
@@ -181,25 +182,25 @@ psmove_3axisvector_cross(const PSMove_3AxisVector *a, const PSMove_3AxisVector *
 float
 psmove_3axisvector_min_component(const PSMove_3AxisVector *v)
 {
-	return fmin(fmin(v->x, v->y), v->z);
+	return (float)fmin((float)fmin(v->x, v->y), v->z);
 }
 
 float
 psmove_3axisvector_max_component(const PSMove_3AxisVector *v)
 {
-	return fmax(fmax(v->x, v->y), v->z);
+	return (float)fmax((float)fmax(v->x, v->y), v->z);
 }
 
 PSMove_3AxisVector
 psmove_3axisvector_min_vector(const PSMove_3AxisVector *a, const PSMove_3AxisVector *b)
 {
-	return psmove_3axisvector_xyz(fmin(a->x, b->x), fmin(a->y, b->y), fmin(a->z, b->z));
+	return psmove_3axisvector_xyz((float)fmin(a->x, b->x), (float)fmin(a->y, b->y), (float)fmin(a->z, b->z));
 }
 
 PSMove_3AxisVector
 psmove_3axisvector_max_vector(const PSMove_3AxisVector *a, const PSMove_3AxisVector *b)
 {
-	return psmove_3axisvector_xyz(fmax(a->x, b->x), fmax(a->y, b->y), fmax(a->z, b->z));
+	return psmove_3axisvector_xyz((float)fmax(a->x, b->x), (float)fmax(a->y, b->y), (float)fmax(a->z, b->z));
 }
 
 float

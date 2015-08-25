@@ -74,10 +74,6 @@ ADDCALL psmove_quaternion_is_valid(const Eigen::Quaternionf &q);
 ADDAPI Eigen::Vector3f
 ADDCALL psmove_vector3f_clockwise_rotate(const Eigen::Quaternionf &q, const Eigen::Vector3f &v);
 
-// Applies quaternion as (q^-1*v*q)
-ADDAPI PSMove_3AxisVector
-ADDCALL psmove_vector_clockwise_rotate(const Eigen::Quaternionf &q, const PSMove_3AxisVector &v);
-
 ADDAPI Eigen::Matrix3f
 ADDCALL psmove_quaternion_to_clockwise_matrix3f(const Eigen::Quaternionf &q);
 
