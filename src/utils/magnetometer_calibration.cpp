@@ -261,7 +261,7 @@ is_move_stable_and_aligned_with_gravity(PSMove *move)
 
 	// Get the direction the gravity vector should be pointing 
 	// while the controller is in cradle pose.
-	psmove_get_gravity_calibration_direction(move, &k_identity_gravity_vector);
+	psmove_get_identity_gravity_calibration_direction(move, &k_identity_gravity_vector);
 	psmove_get_accelerometer_frame(move, Frame_SecondHalf, 
 		&acceleration_direction.x, &acceleration_direction.y, &acceleration_direction.z);
 	acceleration_magnitude = psmove_3axisvector_normalize_with_default(&acceleration_direction, k_psmove_vector_zero);

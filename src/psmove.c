@@ -1845,6 +1845,8 @@ void
 psmove_get_magnetometer_vector(PSMove *move,
         float *mx, float *my, float *mz)
 {
+	psmove_return_if_fail(move != NULL);
+
 	PSMove_3AxisVector m;
 
 	psmove_get_magnetometer_3axisvector(move, &m);
@@ -1930,14 +1932,6 @@ psmove_get_orientation(PSMove *move,
     psmove_return_if_fail(move->orientation != NULL);
 
     psmove_orientation_get_quaternion(move->orientation, w, x, y, z);
-}
-
-PSMoveOrientation *
-psmove_get_orientation_state(PSMove *move)
-{
-    psmove_return_val_if_fail(move != NULL, NULL);
-
-	return move->orientation;
 }
 
 void
@@ -2094,13 +2088,44 @@ psmove_get_magnetometer_calibration_range(PSMove *move)
 }
 
 void
-psmove_get_gravity_calibration_direction(PSMove *move, PSMove_3AxisVector *out_a)
+psmove_set_orientation_fusion_type(PSMove *move, enum PSMoveOrientation_Fusion_Type fusion_type)
+{
+    psmove_return_if_fail(move != NULL);
+    psmove_return_if_fail(move->orientation != NULL);
+
+	psmove_orientation_set_fusion_type(move->orientation, fusion_type);
+}
+
+void
+psmove_set_calibration_transform(PSMove *move, const PSMove_3AxisTransform *transform)
+{
+    psmove_return_if_fail(move != NULL);
+    psmove_return_if_fail(move->orientation != NULL);
+
+	psmove_orientation_set_calibration_transform(move->orientation, transform);
+}
+
+void
+psmove_get_identity_gravity_calibration_direction(PSMove *move, PSMove_3AxisVector *out_a)
 {
 	*out_a= psmove_3axisvector_xyz(0.f, 1.f, 0.f);
 }
 
 void
-psmove_get_magnetometer_calibration_direction(PSMove *move, PSMove_3AxisVector *out_m)
+psmove_get_transformed_gravity_calibration_direction(PSMove *move, PSMove_3AxisVector *out_a)
+{
+	if (move != NULL)
+	{
+		*out_a= psmove_orientation_get_gravity_calibration_direction(move->orientation);
+	}
+	else
+	{
+		psmove_get_identity_gravity_calibration_direction(move, out_a);
+	}
+}
+
+void
+psmove_get_identity_magnetometer_calibration_direction(PSMove *move, PSMove_3AxisVector *out_m)
 {
 	psmove_return_if_fail(move != NULL);
 	psmove_return_if_fail(out_m != NULL);
@@ -2109,11 +2134,65 @@ psmove_get_magnetometer_calibration_direction(PSMove *move, PSMove_3AxisVector *
 }
 
 void
+psmove_get_transformed_magnetometer_calibration_direction(PSMove *move, PSMove_3AxisVector *out_m)
+{
+	if (move != NULL)
+	{
+		*out_m= psmove_orientation_get_magnetometer_calibration_direction(move->orientation);
+	}
+	else
+	{
+		psmove_get_identity_magnetometer_calibration_direction(move, out_m);
+	}
+}
+
+void
 psmove_set_magnetometer_calibration_direction(PSMove *move, PSMove_3AxisVector *m)
 {
 	psmove_return_if_fail(move != NULL);
 
 	move->magnetometer_calibration_direction = *m;
+}
+
+void
+psmove_set_sensor_data_transform(PSMove *move, const PSMove_3AxisTransform *transform)
+{
+    psmove_return_if_fail(move != NULL);
+    psmove_return_if_fail(move->orientation != NULL);
+
+	psmove_orientation_set_sensor_data_transform(move->orientation, transform);
+}
+
+void
+psmove_get_transformed_magnetometer_direction(PSMove *move, PSMove_3AxisVector *out_m)
+{
+	psmove_return_if_fail(move != NULL);
+
+	*out_m= psmove_orientation_get_magnetometer_normalized_vector(move->orientation);
+}
+
+void
+psmove_get_transformed_accelerometer_frame_3axisvector(PSMove *move, enum PSMove_Frame frame, PSMove_3AxisVector *out_a)
+{
+	psmove_return_if_fail(move != NULL);
+
+	*out_a= psmove_orientation_get_accelerometer_vector(move->orientation, frame);
+}
+
+void
+psmove_get_transformed_accelerometer_frame_direction(PSMove *move, enum PSMove_Frame frame, PSMove_3AxisVector *out_a)
+{
+	psmove_return_if_fail(move != NULL);
+
+	*out_a= psmove_orientation_get_accelerometer_normalized_vector(move->orientation, frame);
+}
+
+void
+psmove_get_transformed_gyroscope_frame_3axisvector(PSMove *move, enum PSMove_Frame frame, PSMove_3AxisVector *out_w)
+{
+	psmove_return_if_fail(move != NULL);
+
+	*out_w= psmove_orientation_get_gyroscope_vector(move->orientation, frame);
 }
 
 void

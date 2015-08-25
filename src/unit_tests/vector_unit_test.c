@@ -77,7 +77,7 @@ bool
 psmove_vector_test_min()
 {
 	UNIT_TEST_BEGIN("min vector")
-		PSMove_3AxisVector v1 = psmove_3axisvector_xyz(1.f, 2.f, 2.f);
+	PSMove_3AxisVector v1 = psmove_3axisvector_xyz(1.f, 2.f, 2.f);
 	PSMove_3AxisVector v2 = psmove_3axisvector_xyz(2.f, 1.f, 1.f);
 	PSMove_3AxisVector min_v_expected = psmove_3axisvector_xyz(1.f, 1.f, 1.f);
 	PSMove_3AxisVector min_v_acutal = psmove_3axisvector_min_vector(&v1, &v2);

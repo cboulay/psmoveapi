@@ -61,8 +61,6 @@ struct _CameraControl {
 
 #if defined(CAMERA_CONTROL_USE_PS3EYE_DRIVER)
     ps3eye_t *eye;
-    int width;
-    int height;
     IplImage *framebgr;
 #endif
 
@@ -72,6 +70,9 @@ struct _CameraControl {
 
     float focl_x;
     float focl_y;
+
+    int width;
+    int height;
 
     enum PSMove_Bool deinterlace;
 };

@@ -146,16 +146,6 @@ psmove_vector3f_clockwise_rotate(const Eigen::Quaternionf &q, const Eigen::Vecto
 	return q.conjugate()._transformVector(v);
 }
 
-PSMove_3AxisVector
-psmove_vector_clockwise_rotate(const Eigen::Quaternionf &q, const PSMove_3AxisVector &v)
-{
-	assert_quaternion_is_normalized(q);
-	const Eigen::Vector3f rotated_v3f = psmove_vector3f_clockwise_rotate(q, Eigen::Vector3f(v.x, v.y, v.z));
-	const PSMove_3AxisVector rotated_v = psmove_3axisvector_xyz(rotated_v3f.x(), rotated_v3f.y(), rotated_v3f.z());
-
-	return rotated_v;
-}
-
 Eigen::Matrix3f
 psmove_quaternion_to_clockwise_matrix3f(const Eigen::Quaternionf &q)
 {

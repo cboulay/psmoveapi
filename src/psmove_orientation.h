@@ -43,20 +43,6 @@ extern "C" {
 struct _PSMoveOrientation;
 typedef struct _PSMoveOrientation PSMoveOrientation;
 
-//-- constants ----
-enum PSMoveOrientation_Fusion_Type {
-	OrientationFusion_None,
-	OrientationFusion_MadgwickIMU,
-	OrientationFusion_MadgwickMARG,
-	OrientationFusion_ComplementaryMARG,
-};
-
-ADDAPI extern const PSMove_3AxisTransform *k_psmove_identity_pose_upright;
-ADDAPI extern const PSMove_3AxisTransform *k_psmove_identity_pose_laying_flat;
-
-ADDAPI extern const PSMove_3AxisTransform *k_psmove_sensor_transform_identity;
-ADDAPI extern const PSMove_3AxisTransform *k_psmove_sensor_transform_opengl;
-
 //-- interface -----
 ADDAPI PSMoveOrientation *
 ADDCALL psmove_orientation_new(PSMove *move);
@@ -67,37 +53,6 @@ ADDCALL psmove_orientation_free(PSMoveOrientation *orientation_state);
 ADDAPI void
 ADDCALL psmove_orientation_set_fusion_type(PSMoveOrientation *orientation_state, enum PSMoveOrientation_Fusion_Type fusion_type);
 
-/**
- * \brief Set the transform used on the calibration data in the psmove_get_transform_<sensor>_... methods
- *
- * This method sets the transform used to modify the calibration vectors returned by:
- * - psmove_orientation_get_magnetometer_calibration_direction()
- * - psmove_orientation_get_gravity_calibration_direction()
- *
- * The transformed calibration data is used by the orientation filter to compute 
- * a quaternion (see \ref psmove_orientation_get_quaternion) that represents 
- * the controllers current rotation from the "identity pose".
- * 
- * Historically, the "identity pose" bas been with the controller laying flat
- * with the controller pointing at the screen. However, now that we have a
- * calibration step that record the magnetic field direction relative to 
- * gravity it makes more sense to make the identity pose with the controller 
- * sitting vertically since it's more stable to record that way. 
- *  
- * In order to maintain reverse compatibility, this transform defaults to rotating
- * the vertically recorded calibration vectors 90 degrees about X axis as if the 
- * controller was laying flat during calibration.
- *
- * Therefore, if you want a different "identity pose" then the default,
- * use this method to set a custom transform.
- *
- * There are the following transforms available:
- * - k_psmove_identity_pose_upright - "identity pose" is the controller standing upright
- * - k_psmove_identity_pose_laying_flat - "identity pose" is the controller laying down pointed at the screen
- *
- * \param orientation_state A valid \ref PSMoveOrientation handle
- * \param transform A \ref PSMove_3AxisTransform transform to apply to the calibration data
- **/
 ADDAPI void
 ADDCALL psmove_orientation_set_calibration_transform(PSMoveOrientation *orientation_state, const PSMove_3AxisTransform *transform);
 
@@ -107,38 +62,6 @@ ADDCALL psmove_orientation_get_gravity_calibration_direction(PSMoveOrientation *
 ADDAPI PSMove_3AxisVector
 ADDCALL psmove_orientation_get_magnetometer_calibration_direction(PSMoveOrientation *orientation_state);
 
-/**
- * \brief Set the transform used on the sensor data in the psmove_get_transform_<sensor>_... methods
- *
- * This method sets the transform used to modify the sensor vectors returned by:
- * - psmove_orientation_get_accelerometer_vector()
- * - psmove_orientation_get_accelerometer_normalized_vector()
- * - psmove_orientation_get_gyroscope_vector()
- * - psmove_orientation_get_magnetometer_normalized_vector()
- *
- * The transformed sensor data is used by the orientation filter to compute 
- * a quaternion (see \ref psmove_orientation_get_quaternion) that represents 
- * the controllers current rotation from the "identity pose".
- * 
- * Historically, the sensor data in the orientation code has been rotated 90 degrees 
- * clockwise about the x-axis. The original Madgwick orientation filter was coded to assume
- * an OpenGL style coordinate system (+x=right, +y=up, +z=out of screen), rather than 
- * than PSMoves coordinate system where:
- *
- * +x = From Select to Start button
- * +y = From Trigger to Move button
- * +z = From glowing orb to USB connector
- *
- * The current default sets the sensor transform to assume an OpenGL style coordinate system
- * in order to maintain reverse compatibility
- *
- * There are the following transforms available:
- * - k_psmove_sensor_transform_identity - Keep the sensor data as it was
- * - k_psmove_sensor_transform_opengl - Rotate 90 degrees about the x-axis (historical default)
- *
- * \param orientation_state A valid \ref PSMoveOrientation handle
- * \param transform A \ref PSMove_3AxisTransform transform to apply to the sensor data
- **/
 ADDAPI void
 ADDCALL psmove_orientation_set_sensor_data_transform(PSMoveOrientation *orientation_state, const PSMove_3AxisTransform *transform);
 

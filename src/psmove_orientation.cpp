@@ -234,7 +234,7 @@ psmove_orientation_get_gravity_calibration_direction(PSMoveOrientation *orientat
 	psmove_return_val_if_fail(orientation_state != NULL, *k_psmove_vector_zero);
 
 	PSMove_3AxisVector identity_g;
-	psmove_get_gravity_calibration_direction(orientation_state->move, &identity_g);
+	psmove_get_identity_gravity_calibration_direction(orientation_state->move, &identity_g);
 
 	// First apply the calibration data transform.
 	// This allows us to pretend the "identity pose" was some other orientation the vertical during calibration
@@ -253,7 +253,7 @@ psmove_orientation_get_magnetometer_calibration_direction(PSMoveOrientation *ori
 	psmove_return_val_if_fail(orientation_state != NULL, *k_psmove_vector_zero);
 
 	PSMove_3AxisVector identity_m;
-	psmove_get_magnetometer_calibration_direction(orientation_state->move, &identity_m);
+	psmove_get_identity_magnetometer_calibration_direction(orientation_state->move, &identity_m);
 
 	// First apply the calibration data transform.
 	// This allows us to pretend the "identity pose" was some other orientation the vertical during calibration
