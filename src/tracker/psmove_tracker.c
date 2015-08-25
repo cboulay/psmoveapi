@@ -271,6 +271,21 @@ struct _PSMoveTracker {
     enum PSMove_Bool mirror; // mirror camera image horizontally
 };
 
+#define N_PRESET_COLORS 5
+
+/* Preset colors - use them in ascending order if not used yet */
+static const struct PSMove_RGBValue preset_colors[N_PRESET_COLORS] = {
+    { 0xFF, 0x00, 0xFF }, /* magenta */
+    { 0x00, 0xFF, 0xFF }, /* cyan */
+    { 0xFF, 0xFF, 0x00 }, /* yellow */
+    { 0xFF, 0x00, 0x00 }, /* red */
+    #ifdef __APPLE__
+        { 0x00, 0xFF, 0x00 }, /* green */
+    #else
+        { 0x00, 0x00, 0xFF }, /* blue */
+    #endif
+};
+
 // -------- START: internal functions only
 
 /**
@@ -827,7 +842,7 @@ psmove_tracker_reset_distortion(PSMoveTracker *tracker)
     camera_control_reset_calibration(tracker->cc);
 }
 
-#define N_PRESET_COLORS 5
+
 enum PSMoveTracker_Status
 psmove_tracker_enable(PSMoveTracker *tracker, PSMove *move)
 {
@@ -844,92 +859,10 @@ psmove_tracker_enable(PSMoveTracker *tracker, PSMove *move)
     psmove_update_leds(move);
 
     int i;
-
-    /* Preset colors - use them in ascending order if not used yet */
-    struct PSMove_RGBValue preset_colors[] = {
-        {0xFF, 0x00, 0xFF}, /* magenta */
-        {0x00, 0xFF, 0xFF}, /* cyan */
-        {0xFF, 0xFF, 0x00}, /* yellow */
-        {0xFF, 0x00, 0x00}, /* red */
-#ifdef __APPLE__
-        {0x00, 0xFF, 0x00}, /* green */
-#else
-        {0x00, 0x00, 0xFF}, /* blue */
-#endif
-    };
-
-    // Re-order the sphere colours by hue-distance to non-illuminated image.
-    int colorOrder[] = { 0, 1, 2, 3, 4 };
-    /*  Though this does what is intended, it is not always the best result.
-    int colorOrder[N_PRESET_COLORS];
-    psmove_tracker_update_image(tracker);
-    IplImage* frame = tracker->frame;
-    CvScalar avg_rgb = cvAvg(frame, NULL);
-    CvScalar avg_hsv = th_brg2hsv(avg_rgb);
-    psmove_DEBUG("avg_hsv: h %.2f, s %.2f, v%.2f\n", avg_hsv.val[0], avg_hsv.val[1], avg_hsv.val[2]);
-    // The expected HSV for each possible LED color
-    CvScalar led_hsv[N_PRESET_COLORS];
-    // The difference between expected LED hue and no-LED image hue
-    float led_avg_deltah[N_PRESET_COLORS];
-    // Maximum difference between image and LED hues so far
-    float max_deltah = 0;
-    for (i = 0; i < N_PRESET_COLORS; i++)
-    {
-        led_hsv[i] = th_brg2hsv(cvScalar(preset_colors[i].b, preset_colors[i].g, preset_colors[i].r, 0));
-        led_avg_deltah[i] = fabs(led_hsv[i].val[0] - avg_hsv.val[0]);
-        if (led_avg_deltah[i] > max_deltah)
-        {
-            max_deltah = led_avg_deltah[i];
-            colorOrder[0] = i;
-        }
-    }
-    psmove_DEBUG("Color %i: r %d, g %d, b %d\n", 0,
-        preset_colors[colorOrder[0]].r, preset_colors[colorOrder[0]].g, preset_colors[colorOrder[0]].b);
-
-    // Sort the remaining by distance to above.
-    int already_used = 0;
-    float total_distance;  // 
-    float this_deltah;
-    int j; // index into led_hsv
-    int k; // index into all previous colorOrder
-    for (i = 1; i < N_PRESET_COLORS; i++) // index into the next colorOrder we are trying to find.
-    {
-        max_deltah = 0;
-        for (j = 0; j < N_PRESET_COLORS; j++) 
-        {
-            already_used = 0;
-            for (k = 0; k < i; k++) 
-            {
-                if (j == colorOrder[k])
-                {
-                    already_used = 1;
-                }
-            }
-            if (already_used == 0)
-            {
-                total_distance = led_avg_deltah[j] * led_avg_deltah[j];
-                for (k = 0; k < i; k++)
-                {
-                    this_deltah = led_hsv[j].val[0] - led_hsv[k].val[0];
-                    total_distance += this_deltah * this_deltah;
-                }
-                total_distance = sqrt(total_distance);
-                if (total_distance > max_deltah)
-                {
-                    max_deltah = total_distance;
-                    colorOrder[i] = j;
-                }
-            }
-        }
-        psmove_DEBUG("Color %i: r %d, g %d, b %d\n", i,
-            preset_colors[colorOrder[i]].r, preset_colors[colorOrder[i]].g, preset_colors[colorOrder[i]].b);
-    }
-    */
-
     for (i=0; i<ARRAY_LENGTH(preset_colors); i++) {
-        if (!psmove_tracker_color_is_used(tracker, preset_colors[colorOrder[i]])) {
+        if (!psmove_tracker_color_is_used(tracker, preset_colors[i])) {
             return psmove_tracker_enable_with_color_internal(tracker,
-                    move, preset_colors[colorOrder[i]]);
+                    move, preset_colors[i]);
         }
     }
 
@@ -1384,6 +1317,53 @@ psmove_tracker_set_camera_color(PSMoveTracker *tracker, PSMove *move,
         return 1;
     }
 
+    return 0;
+}
+
+int
+psmove_tracker_cycle_color(PSMoveTracker *tracker, PSMove *move)
+{
+    psmove_return_val_if_fail(tracker != NULL, 0);
+    psmove_return_val_if_fail(move != NULL, 0);
+    int next_color_index = 0;
+    struct PSMove_RGBValue rgb;
+
+    TrackedController *tc = psmove_tracker_find_controller(tracker, move);
+    if (tc) {
+        rgb.r = (unsigned char)(tc->color.r);
+        rgb.g = (unsigned char)(tc->color.g);
+        rgb.b = (unsigned char)(tc->color.b);
+
+        int i, next_ind;
+        for (i = 0; i < N_PRESET_COLORS; i++) {
+            next_ind = (i + 1) % N_PRESET_COLORS;
+            if (preset_colors[i].r == rgb.r &&
+                preset_colors[i].g == rgb.g &&
+                preset_colors[i].b == rgb.b &&
+                !psmove_tracker_color_is_used(tracker, preset_colors[next_ind]))
+            {
+                next_color_index = next_ind;
+                break;
+            }
+        }
+
+        psmove_tracker_set_dimming(tracker, 0.0);  // Set dimming to 0 to trigger blinking calibration.
+        psmove_set_leds(move, 0, 0, 0);         // Turn off the LED to make sure it isn't trackable until new colour set.
+        psmove_update_leds(move);
+
+        CvScalar color;
+        CvScalar hsv_color;
+        if (psmove_tracker_blinking_calibration(tracker, move, preset_colors[next_color_index], &color, &hsv_color))
+        {
+            tc->move = move;
+            tc->color = preset_colors[next_color_index];
+            tc->auto_update_leds = PSMove_True;
+            psmove_tracker_remember_color(tracker, preset_colors[next_color_index], color);
+            tc->eColor = tc->eFColor = color;
+            tc->eColorHSV = tc->eFColorHSV = hsv_color;
+        }
+        return 1;
+    }
     return 0;
 }
 
