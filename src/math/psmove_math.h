@@ -49,7 +49,12 @@
 #define k_real_half_pi 0.5f*k_real_pi
 
 //-- macros ----
+#ifdef isfinite
 #define is_valid_float(x) (!isnan(x) && isfinite(x))
+#else
+#define is_valid_float(x) (!isnan(x))
+#endif
+
 #define is_nearly_equal(a, b, epsilon) (fabsf(a-b) <= epsilon)
 #define is_nearly_zero(x) is_nearly_equal(x, 0.0f, k_real_epsilon)
 
@@ -70,34 +75,30 @@
 #endif
 
 //-- inline -----
-__INLINE__ float clampf(float x, float lo, float hi)
-{
-	return fminf(fmaxf(x, lo), hi);
-}
+#ifdef __cplusplus
+extern "C" {
+#endif	
 
-__INLINE__ float clampf01(float x)
-{
-	return clampf(x, 0.f, 1.f);
-}
+ADDAPI float 
+ADDCALL clampf(float x, float lo, float hi);
 
-__INLINE__ float lerpf(float a, float b, float u)
-{
-	return a*(1.f - u) + b*u;
-}
+ADDAPI float 
+ADDCALL clampf01(float x);
 
-__INLINE__ float lerp_clampf(float a, float b, float u)
-{
-	return clampf(lerpf(a, b, u), a, b);
-}
+ADDAPI float 
+ADDCALL lerpf(float a, float b, float u);
 
-__INLINE__ float degrees_to_radians(float x)
-{
-	return ((x * k_real_pi) / 180.f);
-}
+ADDAPI float 
+ADDCALL lerp_clampf(float a, float b, float u);
 
-__INLINE__ float radians_to_degrees(float x)
-{
-	return ((x * 180.f) / k_real_pi);
+ADDAPI float 
+ADDCALL degrees_to_radians(float x);
+
+ADDAPI float 
+ADDCALL radians_to_degrees(float x);
+
+#ifdef __cplusplus
 }
+#endif	
 
 #endif // __PSMOVE_MATH_H
