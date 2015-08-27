@@ -163,6 +163,7 @@ camera_control_new_with_settings(int cameraID, int width, int height, int framer
     // Initialize PS3EYEDriver
     ps3eye_init();
     int cams = ps3eye_count_connected();
+    psmove_DEBUG("Found %i ps3eye(s) with CAMERA_CONTROL_USE_PS3EYE_DRIVER.\n");
     if (cams <= cameraID) {
         free(cc);
         return NULL;
@@ -172,6 +173,7 @@ camera_control_new_with_settings(int cameraID, int width, int height, int framer
         get_metrics(&width, &height);
     }
 
+    psmove_DEBUG("Attempting to open ps3eye with cameraId, width, height, framerate: %d, %d, %d, %d.\n", cameraID, width, height, framerate);
     cc->eye = ps3eye_open(cameraID, width, height, framerate);
 
     if (cc->eye == NULL) {
