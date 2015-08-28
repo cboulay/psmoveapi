@@ -2172,7 +2172,7 @@ void psmove_tracker_set_roi(PSMoveTracker* tracker, TrackedController* tc, int r
 }
 
 void psmove_tracker_annotate(PSMoveTracker* tracker) {
-	CvPoint p, l;
+	CvPoint p;
 	IplImage* frame = tracker->frame;
 
     CvFont fontSmall = cvFont(0.8, 1);
