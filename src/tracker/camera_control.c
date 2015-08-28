@@ -163,7 +163,7 @@ camera_control_new_with_settings(int cameraID, int width, int height, int framer
     // Initialize PS3EYEDriver
     ps3eye_init();
     int cams = ps3eye_count_connected();
-    psmove_DEBUG("Found %i ps3eye(s) with CAMERA_CONTROL_USE_PS3EYE_DRIVER.\n");
+    psmove_DEBUG("Found %i ps3eye(s) with CAMERA_CONTROL_USE_PS3EYE_DRIVER.\n", cams);
     if (cams <= cameraID) {
         free(cc);
         return NULL;
