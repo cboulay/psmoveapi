@@ -358,8 +358,8 @@ psmove_orientation_update(PSMoveOrientation *orientation_state)
 		case OrientationFusion_MadgwickIMU:
 			{
 				// Get the sensor data transformed by the sensor_transform
-				PSMove_3AxisVector m= 
-					psmove_orientation_get_magnetometer_normalized_vector(orientation_state);
+                //PSMove_3AxisVector m=
+                //	psmove_orientation_get_magnetometer_normalized_vector(orientation_state);
 				PSMove_3AxisVector a= 
 					psmove_orientation_get_accelerometer_normalized_vector(orientation_state, (enum PSMove_Frame)(frame_half));
 				PSMove_3AxisVector omega= 
@@ -641,6 +641,7 @@ _psmove_orientation_fusion_complementary_marg_update(
 	const Eigen::Vector3f &current_g,
 	const Eigen::Vector3f &current_m)
 {
+    // TODO: Following variable is unused
 	PSMoveMadgwickMARGState *marg_state = &orientation_state->fusion_state.madgwick_marg_state;
 
 	// Get the direction of the magnetic fields in the identity pose	
