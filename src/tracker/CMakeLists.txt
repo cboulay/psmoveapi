@@ -123,10 +123,10 @@ IF(PSMOVE_USE_PSEYE
         list(APPEND PSMOVEAPI_TRACKER_REQUIRED_LIBS CLEyeMulticam)
         file(COPY ${CL_EYE_SDK_PATH}/Bin/CLEyeMulticam.dll
             DESTINATION ${ROOT_DIR}/external/libs)
-        set(INFO_USE_CL_EYE_SDK "Yes (SDK version)")
+        set(INFO_USE_CL_EYE "Yes (SDK version)")
         # XXX: If this crashes, disable compiler optimizations
     ELSE()  # Fall back to registry version
-        set(INFO_USE_CL_EYE_SDK "Yes (registry version)")
+        set(INFO_USE_CL_EYE "Yes (registry version)")
     ENDIF()
 ENDIF()
 
@@ -172,5 +172,5 @@ message("  Tracker")
 message("    Tracker library:  " ${INFO_BUILD_TRACKER})
 feature_use_info("PS Eye support:   " PSMOVE_USE_PSEYE)
 feature_use_info("HTML tracing:     " PSMOVE_USE_TRACKER_TRACE)
-message("    Use CL Eye SDK:   " ${INFO_USE_CL_EYE_SDK})
+message("    Use CL Eye:   " ${INFO_USE_CL_EYE})
 message("    Use PS3EYEDriver: " ${INFO_USE_PS3EYE_DRIVER})
