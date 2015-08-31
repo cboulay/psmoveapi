@@ -60,6 +60,9 @@
 // Complementary ARG Filter constants
 #define k_base_earth_frame_align_weight 0.02f
 
+const PSMove_3AxisTransform g_psmove_zero_transform = {0,0,0, 0,0,0, 0,0,0};
+const PSMove_3AxisTransform *k_psmove_zero_transform = &g_psmove_zero_transform;
+
 // Calibration Pose transform
 const PSMove_3AxisTransform g_psmove_identity_pose_upright = {1,0,0, 0,1,0, 0,0,1};
 const PSMove_3AxisTransform *k_psmove_identity_pose_upright = &g_psmove_identity_pose_upright;

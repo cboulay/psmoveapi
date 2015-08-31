@@ -109,6 +109,7 @@ Tracker::Tracker()
     m_fusion = psmove_fusion_new(m_tracker, 1., 1000.);
 
     psmove_tracker_set_mirror(m_tracker, PSMove_True);
+	psmove_tracker_set_smoothing_type(m_tracker, Smoothing_Kalman);
 
     m_moves = (PSMove**)calloc(m_count, sizeof(PSMove*));
     m_items = (int*)calloc(m_count, sizeof(int));
@@ -139,12 +140,16 @@ void
 Tracker::update()
 {
     psmove_tracker_update_image(m_tracker);
-    psmove_tracker_update(m_tracker, NULL);
+    //psmove_tracker_update(m_tracker, NULL);
+	psmove_tracker_update_cbb(m_tracker, NULL);
+
     for (int i=0; i<m_count; i++) {
         while (psmove_poll(m_moves[i]));
 
         float x, y, z;
-        psmove_fusion_get_position(m_fusion, m_moves[i],
+        //psmove_fusion_get_position(m_fusion, m_moves[i],
+        //        &x, &y, &z);
+		psmove_fusion_get_location(m_fusion, m_moves[i],
                 &x, &y, &z);
 
         int buttons = psmove_get_buttons(m_moves[i]);
