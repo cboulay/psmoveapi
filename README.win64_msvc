@@ -40,8 +40,9 @@ Requirements
     `cmake .. -G "Visual Studio 12 Win64" -DBUILD_SHARED_LIBS=OFF -DBUILD_WITH_STATIC_CRT=OFF -DBUILD_PERF_TESTS=OFF -DBUILD_TESTS=OFF -DBUILD_DOCS=OFF -DBUILD_opencv_apps=OFF -DBUILD_opencv_calib3d=ON -DBUILD_opencv_flann=ON -DBUILD_opencv_features2d=ON -DBUILD_opencv_objdetect=OFF -DBUILD_opencv_photo=OFF -DBUILD_opencv_ts=OFF -DBUILD_opencv_ml=OFF -DBUILD_opencv_video=OFF -DBUILD_opencv_java=OFF -DWITH_OPENEXR=OFF -DWITH_FFMPEG=OFF -DWITH_JASPER=OFF -DWITH_TIFF=OFF`
 
     Open the solution in psmoveapi\external\opencv\build\OpenCV.sln
-    Change the target to Release (at the top of the Visual Studio window).
+    Change the target to Release x64 (at the top of the Visual Studio window).
     Build the solution (Press F7).
+    You can also build the solution for Debug target if you intend to debug psmoveapi.
     
     Note: OpenCV 2.4.11 is required only for MSVC builds of the psmoveapi; Linux and Mac builds of the psmoveapi require OpenCV 3.
     
@@ -70,6 +71,7 @@ Requirements
     Open the `build\Project.sln` solution file.
     Change the target to Release.
     Build the solution (Press F7).
+    You can also build the Debug solution.
     
 7. Read [this Wiki](https://github.com/cboulay/psmove-ue4/wiki) for windows-specific information on pairing and connecting the psmove controller and on using the PS3Eye camera.
 
