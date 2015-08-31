@@ -103,10 +103,34 @@ ADDAPI float
 ADDCALL psmove_3axisvector_length(const PSMove_3AxisVector *v);
 
 ADDAPI float
+ADDCALL psmove_3axisvector_length_between_squared(const PSMove_3AxisVector *a, const PSMove_3AxisVector *b);
+
+ADDAPI float
+ADDCALL psmove_3axisvector_length_between(const PSMove_3AxisVector *a, const PSMove_3AxisVector *b);
+
+ADDAPI float
 ADDCALL psmove_3axisvector_normalize_with_default(PSMove_3AxisVector *inout_v, const PSMove_3AxisVector *default_result);
 
 ADDAPI PSMove_3AxisVector
 ADDCALL psmove_3axisvector_apply_transform(const PSMove_3AxisVector *v, const PSMove_3AxisTransform *m);
+
+/**
+ * \brief Compute the mean and covariance of a set of point samples
+ *
+ * Given a list of points, compute the average (mean) and the variance of those
+ * points about the average (covariance) in a 3x3 matrix.
+ *
+ * \param samples A pointer to an array of \ref PSMove_3AxisVector points
+ * \param sample_count The number of points in the sample list
+ * \param out_mean The average of all of the points in the list
+ * \param out_covariance The 3x3 covariance matrix about the average
+ *
+ * \return true on success, false on failure (i.e. zero points given)
+ **/
+ADDAPI bool 
+ADDCALL psmove_point_cloud_compute_covariance(
+	const PSMove_3AxisVector *samples, const int sample_count,
+	PSMove_3AxisVector *out_mean, PSMove_3AxisTransform *out_covariance);
 
 #ifdef __cplusplus
 }

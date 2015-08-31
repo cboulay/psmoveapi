@@ -216,6 +216,22 @@ psmove_3axisvector_length(const PSMove_3AxisVector *v)
 }
 
 float
+psmove_3axisvector_length_between_squared(const PSMove_3AxisVector *a, const PSMove_3AxisVector *b)
+{
+	PSMove_3AxisVector diff= psmove_3axisvector_subtract(a, b);
+
+	return psmove_3axisvector_dot(&diff, &diff);
+}
+
+float
+psmove_3axisvector_length_between(const PSMove_3AxisVector *a, const PSMove_3AxisVector *b)
+{
+	PSMove_3AxisVector diff= psmove_3axisvector_subtract(a, b);
+
+	return sqrtf(psmove_3axisvector_dot(&diff, &diff));
+}
+
+float
 psmove_3axisvector_normalize_with_default(PSMove_3AxisVector *inout_v, const PSMove_3AxisVector *default_result)
 {
 	const float length = psmove_3axisvector_length(inout_v);
@@ -244,4 +260,57 @@ psmove_3axisvector_apply_transform(const PSMove_3AxisVector *v, const PSMove_3Ax
 			m->row2[0]*v->x + m->row2[1]*v->y + m->row2[2]*v->z);
 
 	return result;
+}
+
+bool psmove_point_cloud_compute_covariance(
+	const PSMove_3AxisVector *samples, 
+	const int sample_count,
+	PSMove_3AxisVector *out_mean,
+	PSMove_3AxisTransform *out_covariance)
+{
+	bool success = false;
+
+	PSMove_3AxisVector mean= *k_psmove_vector_zero;
+	PSMove_3AxisTransform covariance= *k_psmove_zero_transform;
+
+	if (sample_count > 1)
+	{
+		const float N = (float)sample_count;
+		const float N_minus_one = N - 1.f;
+
+		for (int index = 0; index < sample_count; ++index)
+		{
+			mean = psmove_3axisvector_add(&mean, &samples[index]);
+		}
+		mean= psmove_3axisvector_divide_by_scalar_unsafe(&mean, N);
+
+		for (int index = 0; index < sample_count; ++index)
+		{
+			const float x = samples[index].x - mean.x; 
+			const float y = samples[index].y - mean.y;
+			const float z = samples[index].z - mean.z;
+
+			covariance.row0[0] += x*x; covariance.row0[1] += y*x; covariance.row0[2] += z*x;
+			covariance.row1[0] += x*y; covariance.row1[1] += y*y; covariance.row1[2] += z*y;
+			covariance.row2[0] += z*x; covariance.row2[1] += z*z; covariance.row2[2] += z*z;
+		}
+
+		covariance.row0[0] /= N_minus_one; covariance.row0[1] /= N_minus_one; covariance.row0[2] /= N_minus_one;
+		covariance.row1[0] /= N_minus_one; covariance.row1[1] /= N_minus_one; covariance.row1[2] /= N_minus_one;
+		covariance.row2[0] /= N_minus_one; covariance.row2[1] /= N_minus_one; covariance.row2[2] /= N_minus_one;
+
+		success = true;
+	}
+
+	if (out_mean)
+	{
+		*out_mean = mean;
+	}
+
+	if (out_covariance)
+	{
+		*out_covariance = covariance;
+	}
+
+	return success;
 }

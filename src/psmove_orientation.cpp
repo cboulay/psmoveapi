@@ -60,6 +60,9 @@
 // Complementary ARG Filter constants
 #define k_base_earth_frame_align_weight 0.02f
 
+const PSMove_3AxisTransform g_psmove_zero_transform = {0,0,0, 0,0,0, 0,0,0};
+const PSMove_3AxisTransform *k_psmove_zero_transform = &g_psmove_zero_transform;
+
 // Calibration Pose transform
 const PSMove_3AxisTransform g_psmove_identity_pose_upright = {1,0,0, 0,1,0, 0,0,1};
 const PSMove_3AxisTransform *k_psmove_identity_pose_upright = &g_psmove_identity_pose_upright;
@@ -358,8 +361,6 @@ psmove_orientation_update(PSMoveOrientation *orientation_state)
 		case OrientationFusion_MadgwickIMU:
 			{
 				// Get the sensor data transformed by the sensor_transform
-                //PSMove_3AxisVector m=
-                //	psmove_orientation_get_magnetometer_normalized_vector(orientation_state);
 				PSMove_3AxisVector a= 
 					psmove_orientation_get_accelerometer_normalized_vector(orientation_state, (enum PSMove_Frame)(frame_half));
 				PSMove_3AxisVector omega= 

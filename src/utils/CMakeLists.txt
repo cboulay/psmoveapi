@@ -19,3 +19,13 @@ foreach(UTILITY magnetometer_calibration)
         COMPILE_FLAGS -DUSING_STATIC_LIBRARY)
     list(APPEND PSMOVEAPI_INSTALL_TARGETS ${UTILITY})
 endforeach()
+
+# Essential C++ utilities using tracking
+foreach(UTILITY smoothing_calibration)
+    add_executable(${UTILITY} ${CMAKE_CURRENT_LIST_DIR}/${UTILITY}.cpp)
+    target_link_libraries(${UTILITY} psmoveapi_static)
+    target_link_libraries(${UTILITY} psmoveapi_tracker_static)
+    set_target_properties(${UTILITY} PROPERTIES
+        COMPILE_FLAGS -DUSING_STATIC_LIBRARY)
+    list(APPEND PSMOVEAPI_INSTALL_TARGETS ${UTILITY})
+endforeach()

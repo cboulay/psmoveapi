@@ -50,6 +50,7 @@ main(int argc, char* argv[])
 		UNIT_TEST_SUITE_CALL_CPP_MODULE(run_quaternion_unit_tests);
 		UNIT_TEST_SUITE_CALL_CPP_MODULE(run_matrix_unit_tests);
 		UNIT_TEST_SUITE_CALL_CPP_MODULE(run_alignment_unit_tests);
+		UNIT_TEST_SUITE_CALL_CPP_MODULE(run_kalman_filter_unit_tests);
 	UNIT_TEST_SUITE_END()
 
 	psmove_shutdown();

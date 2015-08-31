@@ -118,7 +118,7 @@ psmove_alignment_quaternion_between_vector_frames(
 	Eigen::Quaternionf previous_q = initial_q;
 	Eigen::Quaternionf q = initial_q;
 	
-    //const float tolerance_squared = tolerance*tolerance; //TODO: This variable is unused.
+    //const float tolerance_squared = tolerance*tolerance; //TODO: This variable is unused, but it should be. Need to re-test with this added since the below test should be: error_squared > tolerance_squared
 	const int k_max_iterations = 32;
 	float previous_error_squared = k_real_max;
 	float error_squared = k_real_max;

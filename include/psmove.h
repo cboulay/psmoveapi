@@ -226,6 +226,8 @@ enum PSMove_Version {
     
 /* Swig complains that the following variable declarations may leak memory. */
 
+ADDAPI extern const PSMove_3AxisTransform *k_psmove_zero_transform;
+
 /*! Transforms used by psmove_set_orientation_calibration_transform */
 ADDAPI extern const PSMove_3AxisTransform *k_psmove_identity_pose_upright;
 ADDAPI extern const PSMove_3AxisTransform *k_psmove_identity_pose_laying_flat;

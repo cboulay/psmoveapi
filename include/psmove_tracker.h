@@ -84,10 +84,28 @@ enum PSMoveTracker_Status {
 /*! Exposure modes */
 enum PSMoveTracker_Exposure {
     Exposure_LOW, /*!< Very low exposure: Good tracking, no environment visible */
-    Exposure_MEDIUM, /*!< Middle ground: Good tracking, environment visibile */
+    Exposure_MEDIUM, /*!< Middle ground: Good tracking, environment visible */
     Exposure_HIGH, /*!< High exposure: Fair tracking, but good environment */
     Exposure_INVALID, /*!< Invalid exposure value (for returning failures) */
 };
+
+/*! Smoothing algorithm used on position */
+enum PSMoveTracker_Smoothing_Type {
+	Smoothing_None,		// Don't use any smoothing
+	Smoothing_LowPass,	// A basic low pass filter (default)
+	Smoothing_Kalman,	// A more expensive Kalman filter 
+};
+
+struct _PSMoveTrackerSmoothingSettings {
+	// Low Pass Filter Options
+    int tracker_adaptive_xy; // specifies to use a adaptive x/y smoothing
+    int tracker_adaptive_z; // specifies to use a adaptive z smoothing
+
+	// Kalman Filter Options
+	float acceleration_variance;
+	PSMove_3AxisTransform measurement_covariance;
+};
+typedef struct _PSMoveTrackerSmoothingSettings PSMoveTrackerSmoothingSettings;
 
 /* A structure to retain the tracker settings. Typically these do not change after init & calib.*/
 typedef struct {
@@ -310,7 +328,43 @@ ADDAPI enum PSMoveTracker_Exposure
 ADDCALL psmove_tracker_get_exposure(PSMoveTracker *tracker);
 
 /**
-* \brief Set whether or not the tracker should do smoothing.
+* \brief Initializes a tracker smoothing settings with default values
+*
+* These values are overridden if the smoothing settings calibration file exists
+**/
+ADDAPI void
+ADDCALL psmove_tracker_smoothing_settings_set_default(PSMoveTrackerSmoothingSettings *smoothing_settings);
+
+/**
+* \brief Save the giving smoothing settings to disk
+*
+* These values are take precedence over the defaults.
+*
+* \return A new PSMove_True on success, PSMove_False on IO error
+**/
+ADDAPI enum PSMove_Bool
+ADDCALL psmove_save_smoothing_settings(PSMoveTrackerSmoothingSettings *smoothing_settings);
+
+/**
+* \brief Load the smoothing settings from disk
+*
+* These values are take precedence over the defaults.
+*
+* \return A new PSMove_True on success, PSMove_False on IO error**/
+ADDAPI enum PSMove_Bool
+ADDCALL psmove_load_smoothing_settings(PSMoveTrackerSmoothingSettings *out_smoothing_settings);
+
+/**
+* \brief Set the positional smoothing algorithm to use.
+*
+* \param tracker A valid \ref PSMoveTracker handle
+* \param smoothing_type The smoothing algorithm to use (see \ref PSMoveTracker_Smoothing_Type).
+**/
+ADDAPI void
+ADDCALL psmove_tracker_set_smoothing_type(PSMoveTracker *tracker, enum PSMoveTracker_Smoothing_Type smoothing_type);
+
+/**
+* \brief Set the smoothing parameters for the basic low pass filter.
 *
 * This function enables (1) or disables (0) smoothing for xy and z dimensions.
 *

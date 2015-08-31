@@ -142,6 +142,7 @@ file(GLOB PSMOVEAPI_TRACKER_SRC
 
 if(PSMOVE_BUILD_TRACKER)
     include_directories(${ROOT_DIR}/external/glm)
+	include_directories(${ROOT_DIR}/src/math)
     add_library(psmoveapi_tracker SHARED
         ${PSMOVEAPI_TRACKER_SRC}
         ${PSMOVEAPI_TRACKER_PLATFORM_SRC})
