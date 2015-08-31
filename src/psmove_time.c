@@ -65,41 +65,43 @@ long g_startup_time = 0;
 
 // -- Functions ---
 #if defined(_MSC_VER)
-static int gettimeofday(struct timeval * tp, struct timezone * tzp)
+static int
+gettimeofday(struct timeval * tp, struct timezone * tzp)
 {
-	FILETIME    file_time;
-	ULARGE_INTEGER ularge; 
+    FILETIME    file_time;
+    ULARGE_INTEGER ularge; 
 
 //#if defined(NTDDI_WIN8) && NTDDI_VERSION >= NTDDI_WIN8
 //	GetSystemTimePreciseAsFileTime(&file_time);
 //#else
-	/* Windows 2000 and later. ---------------------------------- */
-	GetSystemTimeAsFileTime(&file_time);
+    /* Windows 2000 and later. ---------------------------------- */
+    GetSystemTimeAsFileTime(&file_time);
 //#endif
 
-	ularge.LowPart = file_time.dwLowDateTime;
-	ularge.HighPart = file_time.dwHighDateTime;
-	ularge.QuadPart -= epoch;
+    ularge.LowPart = file_time.dwLowDateTime;
+    ularge.HighPart = file_time.dwHighDateTime;
+    ularge.QuadPart -= epoch;
 
-	// Number of whole seconds since the epoch
-	tp->tv_sec = (long)(ularge.QuadPart / FILE_TIME_UNITS_PER_SECOND);
-	// Microsecond remainder
-	tp->tv_usec = (long)((ularge.QuadPart % FILE_TIME_UNITS_PER_SECOND) / FILE_TIME_UNITS_PER_MICROSECOND);
+    // Number of whole seconds since the epoch
+    tp->tv_sec = (long)(ularge.QuadPart / FILE_TIME_UNITS_PER_SECOND);
+    // Microsecond remainder
+    tp->tv_usec = (long)((ularge.QuadPart % FILE_TIME_UNITS_PER_SECOND) / FILE_TIME_UNITS_PER_MICROSECOND);
 
-	return 0;
+    return 0;
 }
 #endif // MSVC_BUILD
 
 #if defined(_MSC_VER) || defined(__APPLE__)
-static int clock_gettime(int unused, struct timespec *ts)
+static int
+clock_gettime(int unused, struct timespec *ts)
 {
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
 
-	ts->tv_sec = tv.tv_sec;
-	ts->tv_nsec = tv.tv_usec * 1000;
+    ts->tv_sec = tv.tv_sec;
+    ts->tv_nsec = tv.tv_usec * 1000;
 
-	return 0;
+    return 0;
 }
 #endif // #ifndef _MSC_VER
 
@@ -107,9 +109,9 @@ void
 psmove_sleep(unsigned long milliseconds)
 {
 #ifdef _MSC_VER
-	Sleep(milliseconds);
+    Sleep(milliseconds);
 #else
-	sleep(milliseconds);
+    sleep(milliseconds);
 #endif
 }
 
@@ -117,17 +119,17 @@ void
 psmove_usleep(__int64_t usec)
 {
 #ifdef _MSC_VER
-	HANDLE timer;
-	LARGE_INTEGER ft;
+    HANDLE timer;
+    LARGE_INTEGER ft;
 
-	ft.QuadPart = -(10 * usec); // Convert to 100 nanosecond interval, negative value indicates relative time
+    ft.QuadPart = -(10 * usec); // Convert to 100 nanosecond interval, negative value indicates relative time
 
-	timer = CreateWaitableTimer(NULL, TRUE, NULL);
-	SetWaitableTimer(timer, &ft, 0, NULL, NULL, 0);
-	WaitForSingleObject(timer, INFINITE);
-	CloseHandle(timer);
+    timer = CreateWaitableTimer(NULL, TRUE, NULL);
+    SetWaitableTimer(timer, &ft, 0, NULL, NULL, 0);
+    WaitForSingleObject(timer, INFINITE);
+    CloseHandle(timer);
 #else
-	usleep(usec);
+    usleep(usec);
 #endif // MSVC_BUILD
 
 }
@@ -136,65 +138,66 @@ enum PSMove_Bool
 psmove_time_init()
 {
 #ifdef _WIN32
-	psmove_return_val_if_fail(QueryPerformanceFrequency(&g_frequency), PSMove_False);
-	psmove_return_val_if_fail(QueryPerformanceCounter(&g_startup_time), PSMove_False);
+    psmove_return_val_if_fail(QueryPerformanceFrequency(&g_frequency), PSMove_False);
+    psmove_return_val_if_fail(QueryPerformanceCounter(&g_startup_time), PSMove_False);
 
-	return PSMove_True;
+    return PSMove_True;
 #else
-	struct timeval tv;
+    struct timeval tv;
 
-	psmove_return_val_if_fail(gettimeofday(&tv, NULL) == 0, PSMove_False);
-	g_startup_time = (tv.tv_sec * 1000 + tv.tv_usec / 1000);
+    psmove_return_val_if_fail(gettimeofday(&tv, NULL) == 0, PSMove_False);
+    g_startup_time = (tv.tv_sec * 1000 + tv.tv_usec / 1000);
 
-	return PSMove_True;
+    return PSMove_True;
 #endif // WIN32
 }
 
 PSMove_timestamp 
 psmove_timestamp()
 {
-	struct timespec ts;
-	clock_gettime(CLOCK_MONOTONIC, &ts);
-	return ts;
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts;
 }
 
 PSMove_timestamp 
 psmove_timestamp_diff(PSMove_timestamp a, PSMove_timestamp b)
 {
-	struct timespec ts;
-	if (a.tv_nsec >= b.tv_nsec) {
-		ts.tv_sec = a.tv_sec - b.tv_sec;
-		ts.tv_nsec = a.tv_nsec - b.tv_nsec;
-	}
-	else {
-		ts.tv_sec = a.tv_sec - b.tv_sec - 1;
-		ts.tv_nsec = 1000000000 + a.tv_nsec - b.tv_nsec;
-	}
-	return ts;
+    struct timespec ts;
+    if (a.tv_nsec >= b.tv_nsec) {
+        ts.tv_sec = a.tv_sec - b.tv_sec;
+        ts.tv_nsec = a.tv_nsec - b.tv_nsec;
+    }
+    else {
+        ts.tv_sec = a.tv_sec - b.tv_sec - 1;
+        ts.tv_nsec = 1000000000 + a.tv_nsec - b.tv_nsec;
+    }
+    return ts;
 }
 
 double 
 psmove_timestamp_value(PSMove_timestamp ts)
 {
-	return ts.tv_sec + ts.tv_nsec * 0.000000001;
+    return ts.tv_sec + ts.tv_nsec * 0.000000001;
 }
 
-long psmove_util_get_ticks()
+long
+psmove_util_get_ticks()
 {
 #ifdef _WIN32
-	LARGE_INTEGER now;
+    LARGE_INTEGER now;
 
-	psmove_return_val_if_fail(QueryPerformanceCounter(&now), 0);
+    psmove_return_val_if_fail(QueryPerformanceCounter(&now), 0);
 
-	return (long)((now.QuadPart - g_startup_time.QuadPart) * 1000 /
-		g_frequency.QuadPart);
+    return (long)((now.QuadPart - g_startup_time.QuadPart) * 1000 /
+        g_frequency.QuadPart);
 #else
-	long now;
-	struct timeval tv;
+    long now;
+    struct timeval tv;
 
-	psmove_return_val_if_fail(gettimeofday(&tv, NULL) == 0, 0);
-	now = (tv.tv_sec * 1000 + tv.tv_usec / 1000);
+    psmove_return_val_if_fail(gettimeofday(&tv, NULL) == 0, 0);
+    now = (tv.tv_sec * 1000 + tv.tv_usec / 1000);
 
-	return (now - g_startup_time);
+    return (now - g_startup_time);
 #endif // _WIN32
 }
