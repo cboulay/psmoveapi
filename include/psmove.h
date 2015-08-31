@@ -223,6 +223,8 @@ enum PSMove_Version {
      **/
     PSMOVE_CURRENT_VERSION = 0x030001, /*!< Current version, see psmove_init() */
 };
+    
+/* Swig complains that the following variable declarations may leak memory. */
 
 ADDAPI extern const PSMove_3AxisTransform *k_psmove_zero_transform;
 

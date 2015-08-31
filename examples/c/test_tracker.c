@@ -61,7 +61,10 @@ int main(int arg, char** args) {
     int result;
 
     fprintf(stderr, "Trying to init PSMoveTracker...");
-    PSMoveTracker* tracker = psmove_tracker_new();
+    PSMoveTrackerSettings settings;
+    psmove_tracker_settings_set_default(&settings);
+    settings.color_mapping_max_age = 0;
+    PSMoveTracker* tracker = psmove_tracker_new_with_settings(&settings);
     if (!tracker)
     {
         fprintf(stderr, "Could not init PSMoveTracker.\n");

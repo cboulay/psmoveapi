@@ -84,7 +84,7 @@ main(int arg, char** args)
 		LOG_MESSAGE("Initializing PSMoveTracker...");
 
 		// Do re-use color mapping data
-		PSMoveTrackerInitSettings settings;
+		PSMoveTrackerSettings settings;
 		psmove_tracker_settings_set_default(&settings);
 		settings.color_mapping_max_age= 0;
 

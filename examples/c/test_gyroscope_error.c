@@ -92,7 +92,7 @@ main(int argc, char* argv[])
 		double elapsed_time;
 		int noise_sample_count;
 		int total_sample_count;
-		enum eMeasureState measurement_state = Measurement_WaitForGravityAlignment;
+		enum eMeasurementState measurement_state = Measurement_WaitForGravityAlignment;
 
 		while (measurement_state != Measurement_Complete)
 		{
