@@ -141,7 +141,7 @@ Tracker::update()
 {
     psmove_tracker_update_image(m_tracker);
     //psmove_tracker_update(m_tracker, NULL);
-	psmove_tracker_update_cbb(m_tracker, NULL);
+	psmove_tracker_update(m_tracker, NULL);
 
     for (int i=0; i<m_count; i++) {
         while (psmove_poll(m_moves[i]));

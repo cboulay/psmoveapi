@@ -64,21 +64,23 @@
 #define BLINKS 2                        // number of diff images to create during calibration
 #define COLOR_MAPPING_RING_BUFFER_SIZE 256  /* Has to be 256, so that next_slot automatically wraps */
 
-// Smoothing defaults
-#define TRACKER_SMOOTHING_TYPE_DEFAULT Smoothing_LowPass // Smoothing algorithm
-#define TRACKER_ADAPTIVE_XY_DEFAULT 1           // specifies to use a adaptive x/y smoothing
-#define TRACKER_ADAPTIVE_Z_DEFAULT 1            // specifies to use a adaptive z smoothing
-#define TRACKER_ACCELERATION_VARIANCE_DEFAULT 0.f
-#define TRACKER_X_POSITION_COVARIANCE_DEFAULT 5.f
-#define TRACKER_Y_POSITION_COVARIANCE_DEFAULT 5.f
-#define TRACKER_Z_POSITION_COVARIANCE_DEFAULT 10.f
-
 #define PSEYE_BACKUP_FILE "PSEye_backup.ini"
 #define INTRINSICS_XML "intrinsics.xml"
 #define DISTORTION_XML "distortion.xml"
 #define COLOR_MAPPING_DAT "colormapping.dat"
 #define SMOOTHING_SETTINGS_CSV "smoothing_settings.csv"
 #define SPHERE_RADIUS_CM 2.25
+
+// Smoothing defaults
+static const PSMoveTrackerSmoothingSettings tracker_smoothing_default_settings = {
+    .filter_do_2d_xy = 1,
+    .filter_do_2d_r = 1,
+    .filter_3d_type = Smoothing_None,
+    .acceleration_variance = 0.f,
+    .measurement_covariance = { 5.f, 0,   0,
+                                0,   5.f, 0,
+                                0,   0,  10.f}
+};
 
 static const PSMoveTrackerSettings tracker_default_settings = {
     .camera_frame_width = 0,
@@ -101,8 +103,7 @@ static const PSMoveTrackerSettings tracker_default_settings = {
     .color_hue_filter_range = 20,
     .color_saturation_filter_range = 85,
     .color_value_filter_range = 85,
-    .tracker_adaptive_xy = 1,
-    .tracker_adaptive_z = 1,
+    .use_fitEllipse = 0,
     .color_adaption_quality_t = 35.f,
     .color_update_rate = 1.f,
     .search_tile_width = 0,
@@ -157,21 +158,23 @@ struct _TrackedController {
     enum PSMove_Bool roi_level_fixed;    // true if the ROI level should be fixed
     float mx, my;				// x/y - Coordinates of center of mass of the blob
     float x, y, r;				// x/y - Coordinates of the controllers sphere and its radius
+    float old_x, old_y, old_r;
     int search_tile; 			// current search quadrant when controller is not found (reset to 0 if found)
     float rs;					// a smoothed variant of the radius
 
     // For positional tracker
 	void *position_filter;
-    PSMove_3AxisVector position_cm;        // x/y/z coordinates of sphere in cm from camera focal point
-    PSMove_3AxisVector position_offset;  // x/y/z offsets. Can be used to define origin in camera-space.
-    float el_minor, el_angle;   // For the found ellipse. Used for annotation only.
+    PSMove_3AxisVector position_cm;     // x/y/z coordinates of sphere in cm from camera focal point
+    PSMove_3AxisVector position_offset; // x/y/z offsets. Can be used to define origin in camera-space.
+    float el_major, el_angle;           // For the found ellipse. Used for annotation only.
 
-    float q1, q2, q3; // Calculated quality criteria from the tracker
+    float q1, q2, q3;   // Calculated quality criteria from the tracker
+    bool quality_check; // If q1, q2, q3 all pass.
 
 	bool was_tracked;				// tracked previous frame
 	bool is_tracked;				// tracked this frame
-    long last_color_update;	// the timestamp when the last color adaption has been performed
-	long last_position_update; // the timestamp when the last position update has been performed
+    PSMove_timestamp last_color_update;	// the timestamp when the last color adaption has been performed
+    PSMove_timestamp last_position_update; // the timestamp when the last position update has been performed
     enum PSMove_Bool auto_update_leds;
 };
 typedef struct _TrackedController TrackedController;
@@ -346,9 +349,20 @@ void psmove_tracker_set_roi(PSMoveTracker* tracker, TrackedController* tc, int r
 int psmove_tracker_update_controller(PSMoveTracker* tracker, TrackedController *tc);
 
 /**
-* This function is just the internal implementation of "psmove_tracker_update_cbb"
+* This function takes a vetted contour and calculates sphere 2D position & radius, and 3D position.
 */
-int psmove_tracker_update_controller_cbb(PSMoveTracker* tracker, TrackedController *tc);
+void psmove_tracker_update_controller_position_from_contour(PSMoveTracker *tracker, TrackedController *tc, CvSeq* contourBest);
+
+/**
+* This function filters newly updated sphere 2D position & radius.
+*/
+void psmove_tracker_filter_2d(PSMoveTracker *tracker, TrackedController *tc, CvSeq* contourBest);
+
+/**
+* This function filters a newly-updated sphere position. It uses tracker->settings to determine filtering technique.
+*/
+void psmove_tracker_filter_3d(PSMoveTracker *tracker, TrackedController *tc);
+
 
 /*
  *  This finds the biggest contour within the given image.
@@ -433,9 +447,23 @@ psmove_tracker_remember_color(PSMoveTracker *tracker, struct PSMove_RGBValue rgb
 // -------- END: internal functions only
 
 void
+psmove_tracker_get_settings(PSMoveTracker *tracker, PSMoveTrackerSettings *settings)
+{
+    psmove_return_if_fail(tracker != NULL);
+    *settings = tracker->settings;
+}
+
+void
+psmove_tracker_set_settings(PSMoveTracker *tracker, PSMoveTrackerSettings *settings)
+{
+    psmove_return_if_fail(tracker != NULL);
+    tracker->settings = *settings;
+}
+
+void
 psmove_tracker_settings_set_default(PSMoveTrackerSettings *settings)
 {
-    *settings = tracker_default_settings;  
+    *settings = tracker_default_settings;
     printf("Copied default tracker settings to tracker->settings.\n");
 }
 
@@ -552,22 +580,28 @@ psmove_tracker_get_exposure(PSMoveTracker *tracker)
 }
 
 void
+psmove_tracker_get_smoothing_settings(PSMoveTracker *tracker, PSMoveTrackerSmoothingSettings *smoothing_settings)
+{
+    psmove_return_if_fail(tracker != NULL);
+    *smoothing_settings = tracker->smoothing_settings;
+}
+
+void
+psmove_tracker_set_smoothing_settings(PSMoveTracker *tracker, PSMoveTrackerSmoothingSettings *smoothing_settings)
+{
+    psmove_return_if_fail(tracker != NULL);
+    tracker->smoothing_settings = *smoothing_settings;
+    psmove_tracker_set_smoothing_type(tracker, tracker->smoothing_settings.filter_3d_type);
+}
+
+void
 psmove_tracker_smoothing_settings_set_default(PSMoveTrackerSmoothingSettings *smoothing_settings)
 {
-	// Low Pass Filter defaults
-    smoothing_settings->tracker_adaptive_xy = TRACKER_ADAPTIVE_XY_DEFAULT;
-    smoothing_settings->tracker_adaptive_z = TRACKER_ADAPTIVE_Z_DEFAULT;
-
-	// Kalman Filter defaults
-	PSMove_3AxisTransform *cov= &smoothing_settings->measurement_covariance;
-	cov->row0[0]= TRACKER_X_POSITION_COVARIANCE_DEFAULT; cov->row0[1]= 0.f; cov->row0[2]= 0.f;
-	cov->row1[0]= 0.f; cov->row1[1]= TRACKER_Y_POSITION_COVARIANCE_DEFAULT; cov->row1[2]= 0.f;
-	cov->row2[0]= 0.f; cov->row2[1]= 0.f; cov->row2[2]= TRACKER_Z_POSITION_COVARIANCE_DEFAULT;
-	smoothing_settings->acceleration_variance= TRACKER_ACCELERATION_VARIANCE_DEFAULT;
+    *smoothing_settings = tracker_smoothing_default_settings;
 }
 
 enum PSMove_Bool
-psmove_save_smoothing_settings(PSMoveTrackerSmoothingSettings *smoothing_settings)
+psmove_tracker_save_smoothing_settings(PSMoveTrackerSmoothingSettings *smoothing_settings)
 {
     psmove_return_val_if_fail(smoothing_settings != NULL, PSMove_False);
     char *filepath = psmove_util_get_file_path(SMOOTHING_SETTINGS_CSV);
@@ -577,8 +611,9 @@ psmove_save_smoothing_settings(PSMoveTrackerSmoothingSettings *smoothing_setting
 	psmove_return_val_if_fail(fp != NULL, PSMove_False);
 
     fprintf(fp, "name,value\n");
-    fprintf(fp, "tracker_adaptive_xy,%d\n", smoothing_settings->tracker_adaptive_xy);
-    fprintf(fp, "tracker_adaptive_z,%d\n", smoothing_settings->tracker_adaptive_z);
+    fprintf(fp, "filter_do_2d_xy,%d\n", smoothing_settings->filter_do_2d_xy);
+    fprintf(fp, "filter_do_2d_r,%d\n", smoothing_settings->filter_do_2d_r);
+    fprintf(fp, "filter_3d_type,%d\n", smoothing_settings->filter_3d_type);
 	fprintf(fp, "acceleration_variance,%f\n", smoothing_settings->acceleration_variance);
 	fprintf(fp, "measurement_covariance_00,%f\n", smoothing_settings->measurement_covariance.row0[0]);
 	fprintf(fp, "measurement_covariance_11,%f\n", smoothing_settings->measurement_covariance.row1[1]);
@@ -589,7 +624,7 @@ psmove_save_smoothing_settings(PSMoveTrackerSmoothingSettings *smoothing_setting
 }
 
 enum PSMove_Bool
-psmove_load_smoothing_settings(PSMoveTrackerSmoothingSettings *out_smoothing_settings)
+psmove_tracker_load_smoothing_settings(PSMoveTrackerSmoothingSettings *out_smoothing_settings)
 {
 	PSMoveTrackerSmoothingSettings smoothing_settings;
 	enum PSMove_Bool success = PSMove_False;
@@ -611,15 +646,20 @@ psmove_load_smoothing_settings(PSMoveTrackerSmoothingSettings *out_smoothing_set
 	psmove_goto_if_fail(strcmp(s_name, "name") == 0, finish);
 	psmove_goto_if_fail(strcmp(s_value, "value") == 0, finish);
 
-	char s_tracker_adaptive_xy[64];
-	result = fscanf(fp, "%19s,%d\n", &s_tracker_adaptive_xy, &smoothing_settings.tracker_adaptive_xy);
+    char s_filter_do_2d_xy[64];
+    result = fscanf(fp, "%19s,%d\n", &s_filter_do_2d_xy, &smoothing_settings.filter_do_2d_xy);
 	psmove_goto_if_fail(result == 2, finish);
-	psmove_goto_if_fail(strcmp(s_tracker_adaptive_xy, "tracker_adaptive_xy") == 0, finish);
+    psmove_goto_if_fail(strcmp(s_filter_do_2d_xy, "filter_do_2d_xy") == 0, finish);
 
-	char s_tracker_adaptive_z[64];
-	result = fscanf(fp, "%18s,%d\n", &s_tracker_adaptive_z, &smoothing_settings.tracker_adaptive_z);
+    char s_filter_do_2d_r[64];
+    result = fscanf(fp, "%18s,%d\n", &s_filter_do_2d_r, &smoothing_settings.filter_do_2d_r);
 	psmove_goto_if_fail(result == 2, finish);
-	psmove_goto_if_fail(strcmp(s_tracker_adaptive_z, "tracker_adaptive_z") == 0, finish);
+    psmove_goto_if_fail(strcmp(s_filter_do_2d_r, "filter_do_2d_r") == 0, finish);
+
+    char s_filter_3d_type[64];
+    result = fscanf(fp, "%18s,%d\n", &s_filter_3d_type, &smoothing_settings.filter_3d_type);
+    psmove_goto_if_fail(result == 2, finish);
+    psmove_goto_if_fail(strcmp(s_filter_3d_type, "filter_3d_type") == 0, finish);
 
 	char s_acceleration_variance[64];
 	result = fscanf(fp, "%21s,%f\n", &s_acceleration_variance, &smoothing_settings.acceleration_variance);
@@ -703,12 +743,12 @@ psmove_tracker_set_smoothing_type(PSMoveTracker *tracker, enum PSMoveTracker_Smo
 }
 
 void
-psmove_tracker_set_smoothing(PSMoveTracker *tracker, int adaptive_xy, int adaptive_z)
+psmove_tracker_set_smoothing_2d(PSMoveTracker *tracker, int filter_do_2d_xy, int filter_do_2d_r)
 {
 	psmove_return_if_fail(tracker != NULL);
 
-    tracker->smoothing_settings.tracker_adaptive_xy = adaptive_xy > 0;
-    tracker->smoothing_settings.tracker_adaptive_z = adaptive_z > 0;
+    tracker->smoothing_settings.filter_do_2d_xy = filter_do_2d_xy > 0;
+    tracker->smoothing_settings.filter_do_2d_r = filter_do_2d_r > 0;
 }
 
 void
@@ -756,12 +796,12 @@ psmove_tracker_new_with_camera_and_settings(int camera, PSMoveTrackerSettings *s
         tracker->settings.color_value_filter_range, 0);
     tracker->storage = cvCreateMemStorage(0);
 
-	if (psmove_load_smoothing_settings(&tracker->smoothing_settings) == PSMove_False)
+	if (psmove_tracker_load_smoothing_settings(&(tracker->smoothing_settings)) == PSMove_False)
 	{
-		psmove_tracker_smoothing_settings_set_default(&tracker->smoothing_settings);
+		psmove_tracker_smoothing_settings_set_default(&(tracker->smoothing_settings));
 	}
 
-	psmove_tracker_set_smoothing_type(tracker, TRACKER_SMOOTHING_TYPE_DEFAULT);
+    psmove_tracker_set_smoothing_type(tracker, tracker->smoothing_settings.filter_3d_type);
 
 #if defined(__APPLE__) && !defined(CAMERA_CONTROL_USE_PS3EYE_DRIVER)
     // Assume iSight. Calibration will be done with with sphere against camera
@@ -994,7 +1034,7 @@ psmove_tracker_old_color_is_tracked(PSMoveTracker* tracker, PSMove* move, struct
         psmove_update_leds(move);
         psmove_usleep(1000 * 10); // wait 10ms - ok, since we're not blinking
         psmove_tracker_update_image(tracker);
-        psmove_tracker_update_cbb(tracker, move);
+        psmove_tracker_update(tracker, move);
 
         if (tc->is_tracked) {
             // TODO: Verify quality criteria to avoid bogus tracking
@@ -1546,243 +1586,6 @@ void psmove_tracker_update_image(PSMoveTracker *tracker) {
 int
 psmove_tracker_update_controller(PSMoveTracker *tracker, TrackedController *tc)
 {
-    float x, y;
-    int i = 0;
-    int sphere_found = 0;
-
-    if (tc->auto_update_leds) {
-        // Keep the LEDs illuminated
-        unsigned char r, g, b;
-        psmove_tracker_get_color(tracker, tc->move, &r, &g, &b);
-        psmove_set_leds(tc->move, r, g, b);
-        psmove_update_leds(tc->move);
-    }
-
-    // calculate upper & lower bounds for the color filter
-    CvScalar min = th_scalar_sub(tc->eColorHSV, tracker->rHSV);
-    CvScalar max = th_scalar_add(tc->eColorHSV, tracker->rHSV);
-
-	// this is the tracking algorithm
-	while (1) {
-		// get pointers to data structures for the given ROI-Level
-		IplImage *roi_i = tracker->roiI[tc->roi_level];
-		IplImage *roi_m = tracker->roiM[tc->roi_level];
-
-		// adjust the ROI, so that the blob is fully visible, but only if we have a reasonable FPS
-        if (tracker->debug_fps > tracker->settings.roi_adjust_fps_t) {
-			// TODO: check for validity differently
-			CvPoint nRoiCenter;
-            if (psmove_tracker_center_roi_on_controller(tc, tracker, &nRoiCenter)) {
-				psmove_tracker_set_roi(tracker, tc, nRoiCenter.x, nRoiCenter.y, roi_i->width, roi_i->height);
-			}
-		}
-
-		// apply the ROI
-		cvSetImageROI(tracker->frame, cvRect(tc->roi_x, tc->roi_y, roi_i->width, roi_i->height));
-		cvCvtColor(tracker->frame, roi_i, CV_BGR2HSV);
-
-		// apply color filter
-		cvInRangeS(roi_i, min, max, roi_m);
-
-#if defined(DEBUG_WINDOWS) && defined(PSMOVE_DEBUG)
-        cvShowImage("binary:0", roi_m);
-        cvShowImage("hsv:0", roi_i);
-#endif
-
-		// find the biggest contour in the image
-		float sizeBest = 0;
-		CvSeq* contourBest = NULL;
-		psmove_tracker_biggest_contour(roi_m, tracker->storage, &contourBest, &sizeBest);
-
-		if (contourBest) {
-			CvMoments mu; // ImageMoments are use to calculate the center of mass of the blob
-			CvRect br = cvBoundingRect(contourBest, 0);
-
-			// restore the biggest contour
-			cvSet(roi_m, TH_COLOR_BLACK, NULL);
-			cvDrawContours(roi_m, contourBest, TH_COLOR_WHITE, TH_COLOR_WHITE, -1, CV_FILLED, 8, cvPoint(0, 0));
-			// calucalte image-moments
-			cvMoments(roi_m, &mu, 0);
-			// calucalte the mass center
-            CvPoint p = cvPoint((int)(mu.m10 / mu.m00), (int)(mu.m01 / mu.m00));
-            CvPoint oldMCenter = cvPoint((int)tc->mx, (int)tc->my);
-			tc->mx = (float)(p.x + tc->roi_x);
-            tc->my = (float)(p.y + tc->roi_y);
-			CvPoint newMCenter = cvPoint((int)tc->mx, (int)tc->my);
-
-			// remember the old radius and calcutlate the new x/y position and radius of the found contour
-			float oldRadius = tc->r;
-
-			// estimate x/y position and radius of the sphere
-			psmove_tracker_estimate_circle_from_contour(contourBest, &x, &y, &tc->r);
-
-			// apply radius-smoothing if enabled
-			if (tracker->smoothing_settings.tracker_adaptive_z) {
-				// calculate the difference between calculated radius and the smoothed radius of the past
-				float rDiff = fabsf(tc->rs - tc->r);
-				// calcualte a adaptive smoothing factor
-				// a big distance leads to no smoothing, a small one to strong smoothing
-				float rf = MIN(rDiff / 4.f + 0.15f, 1);
-
-				// apply adaptive smoothing of the radius
-				tc->rs = tc->rs * (1 - rf) + tc->r * rf;
-				tc->r = tc->rs;
-			}
-
-			// apply x/y coordinate smoothing if enabled
-			if (tracker->smoothing_settings.tracker_adaptive_xy) {
-				// a big distance between the old and new center of mass results in no smoothing
-				// a little one to strong smoothing
-				float diff = sqrtf((float)th_dist_squared(oldMCenter, newMCenter));
-				float f = MIN(diff / 7.f + 0.15f, 1);
-				// apply adaptive smoothing
-				tc->x = tc->x * (1 - f) + (x + tc->roi_x) * f;
-				tc->y = tc->y * (1 - f) + (y + tc->roi_y) * f;
-			} else {
-				// do NOT apply adaptive smoothing
-				tc->x = x + tc->roi_x;
-				tc->y = y + tc->roi_y;
-			}
-
-			// calculate the quality of the tracking
-			int pixelInBlob = cvCountNonZero(roi_m);
-			float pixelInResult = tc->r * tc->r * (float)M_PI;
-                        tc->q1 = 0;
-                        tc->q2 = FLT_MAX;
-                        tc->q3 = tc->r;
-
-			// decrease TQ1 by half if below 20px (gives better results if controller is far away)
-			if (pixelInBlob < 20) {
-				tc->q1 /= 2;
-			}
-
-			// The quality checks are all performed on the radius of the blob
-			// its old radius and size.
-			tc->q1 = pixelInBlob / pixelInResult;
-
-			// always check pixel-ratio and minimal size
-            sphere_found = tc->q1 > tracker->settings.tracker_quality_t1 && tc->q3 > tracker->settings.tracker_quality_t3;
-
-			// use the mass center if the quality is very good
-			// TODO: make 0.85 as a CONST
-			if (tc->q1 > 0.85) {
-				tc->x = tc->mx;
-				tc->y = tc->my;
-			}
-			// only perform check if we already found the sphere once
-			if (oldRadius > 0 && tc->search_tile==0) {
-				tc->q2 = fabsf(oldRadius - tc->r) / (oldRadius + FLT_EPSILON);
-
-				// additionally check for to big changes
-                sphere_found = sphere_found && tc->q2 < tracker->settings.tracker_quality_t2;
-			}
-
-			// only if the quality is okay update the future ROI
-			if (sphere_found) {
-				// use adaptive color detection
-				// only if 	1) the sphere has been found
-				// AND		2) the UPDATE_RATE has passed
-				// AND		3) the tracking-quality is high;
-				int do_color_adaption = 0;
-				long now = psmove_util_get_ticks();
-                if (tracker->settings.color_update_rate > 0 && (now - tc->last_color_update) > tracker->settings.color_update_rate * 1000)
-					do_color_adaption = 1;
-
-                if (do_color_adaption &&
-                    tc->q1 > tracker->settings.color_update_quality_t1 &&
-                    tc->q2 < tracker->settings.color_update_quality_t2 &&
-                    tc->q3 > tracker->settings.color_update_quality_t3)
-                {
-					// calculate the new estimated color (adaptive color estimation)
-					CvScalar newColor = cvAvg(tracker->frame, roi_m);
-
-                                        tc->eColor = th_scalar_mul(th_scalar_add(tc->eColor, newColor), 0.5);
-
-					tc->eColorHSV = th_brg2hsv(tc->eColor);
-					tc->last_color_update = now;
-					// CHECK if the current estimate is too far away from its original estimation
-                    if (psmove_tracker_hsvcolor_diff(tc) > tracker->settings.color_adaption_quality_t) {
-						tc->eColor = tc->eFColor;
-						tc->eColorHSV = tc->eFColorHSV;
-						sphere_found = 0;
-					}
-				}
-
-				// update the future roi box
-				br.width = MAX(br.width, br.height) * 3;
-				br.height = br.width;
-				// find a suitable ROI level
-				for (i = 0; i < ROIS; i++) {
-					if (br.width > tracker->roiI[i]->width && br.height > tracker->roiI[i]->height)
-						break;
-
-                                        if (tc->roi_level_fixed) {
-                                            tc->roi_level = 0;
-                                        } else {
-                                            tc->roi_level = i;
-                                        }
-					// update easy accessors
-					roi_i = tracker->roiI[tc->roi_level];
-					roi_m = tracker->roiM[tc->roi_level];
-				}
-
-				// assure that the roi is within the target image
-				psmove_tracker_set_roi(tracker, tc, tc->x - roi_i->width / 2, tc->y - roi_i->height / 2,  roi_i->width, roi_i->height);
-			}
-		}
-		cvClearMemStorage(tracker->storage);
-		cvResetImageROI(tracker->frame);
-
-		if (sphere_found) {
-			//tc->search_tile = 0;
-			// the sphere was found
-			break;
-		}else if(tc->roi_level>0){
-			// the sphere was not found, increase the ROI and search again!
-			tc->roi_x += roi_i->width / 2;
-			tc->roi_y += roi_i->height / 2;
-
-                        if (tc->roi_level_fixed) {
-                            tc->roi_level = 0;
-                        } else {
-                            tc->roi_level = tc->roi_level - 1;
-                        }
-			// update easy accessors
-			roi_i = tracker->roiI[tc->roi_level];
-			roi_m = tracker->roiM[tc->roi_level];
-
-			// assure that the roi is within the target image
-			psmove_tracker_set_roi(tracker, tc,
-                (int)(tc->roi_x - (float)roi_i->width / 2.f),
-                (int)(tc->roi_y - (float)roi_i->height / 2.f),
-                roi_i->width, roi_i->height);
-		}else {
-			int rx;
-			int ry;
-			// the sphere could not be found til a reasonable roi-level
-
-            rx = tracker->settings.search_tile_width * (tc->search_tile %
-                tracker->settings.search_tiles_horizontal);
-            ry = tracker->settings.search_tile_height * (int)(tc->search_tile /
-                tracker->settings.search_tiles_horizontal);
-                        tc->search_tile = ((tc->search_tile + 2) %
-                            tracker->settings.search_tiles_count);
-
-			tc->roi_level=0;
-			psmove_tracker_set_roi(tracker, tc, rx, ry, tracker->roiI[tc->roi_level]->width, tracker->roiI[tc->roi_level]->height);
-			break;
-		}
-	}
-
-	// remember if the sphere was found
-	tc->was_tracked= tc->is_tracked;
-	tc->is_tracked = sphere_found;
-	return sphere_found;
-}
-
-int
-psmove_tracker_update_controller_cbb(PSMoveTracker *tracker, TrackedController *tc)
-{
     // Tell the LEDs to keep on keeping on.
     if (tc->auto_update_leds) {
         unsigned char r, g, b;
@@ -1807,15 +1610,15 @@ psmove_tracker_update_controller_cbb(PSMoveTracker *tracker, TrackedController *
     // 3.   (the contour is found) Smooth contour (though I find it gives a poor distance estimate)
     // 4.   Re-center ROI on middle of bounding rect of countour and re-size to smallest ROI > 3x bounding rect, not extending past image
     // 5.   Re-get contour with new ROI
-    // 6.   Fit ellipse to contour
-    // 7.   Do trigonometry to get x, y, z in cm
-    // 8.   Weak low-pass filter on position.
+    // 6.   Get 2d pixel position, radius, and 3D position
+    // 7.   Filter 2D position and do quality checks
+    // 8.   Filter 3D position
     // 9.   Colour adaptation
 
     int sphere_found = 0;
     int roi_recentered = 0;
     int roi_exhausted = 0;
-    enum PSMove_Bool contour_is_junk = PSMove_False;
+    enum PSMove_Bool contour_is_ok = PSMove_True;
 
     while (!sphere_found && !roi_exhausted) { // Keep going until sphere_found or roi_exhausted
 
@@ -1838,16 +1641,16 @@ psmove_tracker_update_controller_cbb(PSMoveTracker *tracker, TrackedController *
         if (CV_IS_SEQ(contourBest)) {
             if (contourBest->total < 6) {
                 psmove_DEBUG("contourBest->total = %d\n", contourBest->total);
-                contour_is_junk = PSMove_True;
+                contour_is_ok = PSMove_False;
             }
         }
         else {
             psmove_DEBUG("contourBest is not a CvSeq.\n");
-            contour_is_junk = PSMove_True;
+            contour_is_ok = PSMove_False;
         }
 
-        if (contourBest && contour_is_junk == PSMove_False) {
-            // We found a contour in our ROI, and we didn't already determine that the contour with this ROI was garbage.
+        if (contourBest && contour_is_ok == PSMove_True) {
+            // We found a contour in our ROI, and we didn't already determine that the contour with this ROI was bad.
 
             // Quickly evaluate the quality of the contour. We want to guard against garbage data.
             // e.g.,
@@ -1861,9 +1664,9 @@ psmove_tracker_update_controller_cbb(PSMoveTracker *tracker, TrackedController *
                 float d_y = (tc->roi_y + br.y + br.height / 2) - tc->y;
                 delta_px = sqrt(d_x*d_x + d_y*d_y);
             }
-            contour_is_junk = (rectRatio >= 1.25 || delta_px >= 400 || (br.width*br.height)<25) ? PSMove_True : PSMove_False;
+            contour_is_ok = (rectRatio >= 1.25 || delta_px >= 400 || (br.width*br.height)<25) ? PSMove_False : PSMove_True;
 
-            if (!roi_recentered && contour_is_junk == PSMove_False) {
+            if (!roi_recentered && contour_is_ok == PSMove_True) {  //TODO: And only if we have a reasonable FPS
                 // Recenter the ROI on the middle of the bounding rectangle, at smallest ROI >= 3x br size, limited by image size.
 
                 // Determine the minimum size of the new ROI
@@ -1892,121 +1695,18 @@ psmove_tracker_update_controller_cbb(PSMoveTracker *tracker, TrackedController *
                 roi_recentered = 1;
 
             }
-            else if (contour_is_junk == PSMove_False) // ROI already recentered
-			{ 
-				// Compute how long it's been since our last successful position update
-				long now = psmove_util_get_ticks();
-				float time_delta = (float)(now - tc->last_position_update) / 1000.f;
-	
-				// Update the position update timestamp
-				tc->last_position_update= now;
-
-                // Fit an ellipse to our contour
-                CvBox2D ellipse = cvFitEllipse2(contourBest); // TODO: Roll our own with some constraints.
-                // cvFitEllipse2 can't work with less than 5 points in the cvSeq, but there's no easy way
-                // to count the number of points from a CvSeq**
-
-                // Offset ellipse by our ROI
-                ellipse.center.x += tc->roi_x;
-                ellipse.center.y += tc->roi_y;
-
-                // Update pixel positions. Useful for annotations, quick check of quality, and backwards compatibility. 
-                tc->x = ellipse.center.x;
-                tc->y = ellipse.center.y;
-                tc->r = ellipse.size.width / 2;  // aka el_major.
-                tc->el_minor = ellipse.size.height / 2;
-                tc->el_angle = ellipse.angle;
-
-                // Transform x,y from top-left origin to mid/mid origin, with +y up
-                ellipse.center.x -= tracker->frame->width / 2;
-                ellipse.center.y = tracker->frame->height / 2 - ellipse.center.y;
-
-                // Do trigonometry. See https://raw.githubusercontent.com/cboulay/psmove-ue4/master/wiki_pics/MoveTracker.png
-
-                // First get short-hand access to our variables.
-                float a = ellipse.size.width / 2;
-                float f_0 = tracker->cc->focl_x;
-                float x_i = ellipse.center.x;
-                float y_i = ellipse.center.y;
-
-                // Calculations
-                float L_i = sqrt(x_i*x_i + y_i*y_i);
-                float j = (L_i + a) / f_0;
-                float k = L_i / f_0;
-                float l = (j - k) / (1 + j*k);
-                float D_0 = SPHERE_RADIUS_CM * sqrt(1 + l*l) / l;
-                float fl = f_0 / L_i; // used several times.
-                float z = D_0 * fl / sqrt(1 + fl*fl);
-                float L = sqrt(D_0*D_0 - z*z);
-                float x = L*x_i / L_i;
-                float y = L*y_i / L_i;
-				PSMove_3AxisVector measured_position= psmove_3axisvector_xyz(x, y, z);
-
-                // Apply the positional filter to the currently computed position
-				if (psmove_3axisvector_is_valid(&measured_position))
-				{
-					// Re-initialize the positional filter if:
-					// * It has been too long since the last update
-					// * The position wasn't tracked the previous update
-					bool reinitialize_filter= time_delta > POSITION_FILTER_RESET_TIME || !tc->was_tracked;
-
-					switch(tracker->smoothing_type)
-					{
-					case Smoothing_None:	// Don't use any smoothing
-						{
-							tc->position_cm= measured_position;
-						}
-						break;
-					case Smoothing_LowPass:	// A basic low pass filter (default)
-						{
-							if (reinitialize_filter)
-							{
-								psmove_position_lowpass_filter_init(
-									&measured_position, (PSMovePositionLowPassFilter *)tc->position_filter);
-							}
-							else
-							{
-								psmove_position_lowpass_filter_update(
-									&tracker->smoothing_settings,
-									&measured_position,
-									(PSMovePositionLowPassFilter *)tc->position_filter);
-							}
-
-							tc->position_cm= psmove_position_lowpass_filter_get_position(
-								(PSMovePositionLowPassFilter *)tc->position_filter);
-						}
-						break;
-					case Smoothing_Kalman:	// A more expensive Kalman filter 
-						{
-							if (reinitialize_filter)
-							{
-								psmove_position_lowpass_filter_init(
-									&measured_position, (PSMovePositionLowPassFilter *)tc->position_filter);
-							}
-							else
-							{
-								// TODO: Project accelerometer measurement into camera space
-								PSMove_3AxisVector acceleration_control= psmove_3axisvector_xyz(0.f, 0.f, 0.f);
-
-								psmove_position_kalman_filter_update(
-									&tracker->smoothing_settings,
-									&measured_position,
-									&acceleration_control, 
-									time_delta,				
-									(PSMovePositionKalmanFilter *)tc->position_filter);
-							}
-
-							tc->position_cm= psmove_position_kalman_filter_get_position(
-								(PSMovePositionKalmanFilter *)tc->position_filter);
-						}
-						break;
-					}
-				}
-
-                sphere_found = 1; // breaks out of while loop
+            else if (contour_is_ok == PSMove_True) // ROI already recentered
+            {
+                /* These next few lines call separate functions to do tracking and filtering. */
+                // Get the tc->x, y, r, position_cm
+                psmove_tracker_update_controller_position_from_contour(tracker, tc, contourBest);
+                // Filter results, if required
+                psmove_tracker_filter_2d(tracker, tc, contourBest);  // Also does quality check.
+                psmove_tracker_filter_3d(tracker, tc);
 
                 // Adaptive sphere colour filtering
-                if (tracker->settings.color_update_rate > 0 && (now - tc->last_color_update) > tracker->settings.color_update_rate * 1000)
+                double time_since_last_color_update = psmove_timestamp_value(psmove_timestamp_diff(tracker->ts_camera_converted, tc->last_color_update));
+                if (tracker->settings.color_update_rate > 0 && time_since_last_color_update > (double)tracker->settings.color_update_rate)
                 {
                     // Cutout only the tracked contour from our frame.
                     cvSet(roi_m, TH_COLOR_BLACK, NULL);  // Set the whole ROI to black
@@ -2014,7 +1714,7 @@ psmove_tracker_update_controller_cbb(PSMoveTracker *tracker, TrackedController *
                     CvScalar newColor = cvAvg(tracker->frame, roi_m);
                     tc->eColor = th_scalar_mul(th_scalar_add(tc->eColor, newColor), 0.5);
                     tc->eColorHSV = th_brg2hsv(tc->eColor);
-                    tc->last_color_update = now;
+                    tc->last_color_update = tracker->ts_camera_converted;
                     // CHECK if the current estimate is too far away from its original estimation
                     if (psmove_tracker_hsvcolor_diff(tc) > tracker->settings.color_adaption_quality_t) {
                         tc->eColor = tc->eFColor;
@@ -2022,6 +1722,8 @@ psmove_tracker_update_controller_cbb(PSMoveTracker *tracker, TrackedController *
                         sphere_found = 0;
                     }
                 }
+
+                sphere_found = 1; // breaks out of while loop
             }
         }
         else if (tc->roi_level>0) {
@@ -2045,7 +1747,7 @@ psmove_tracker_update_controller_cbb(PSMoveTracker *tracker, TrackedController *
 
             // Set the new ROI. It automatically shifts away from edge if ROI is outside the bounds of the camera.
             psmove_tracker_set_roi(tracker, tc, tc->roi_x - roi_i->width / 2, tc->roi_y - roi_i->height / 2, roi_i->width, roi_i->height);
-            contour_is_junk = PSMove_False; // Reset because we're going to use a new ROI
+            contour_is_ok = PSMove_True; // Reset because we're going to use a new ROI
 
         }
         else {  //!(contourBest && contour_is_junk == PSMove_False) && !(tc->roi_level>0)
@@ -2066,9 +1768,214 @@ psmove_tracker_update_controller_cbb(PSMoveTracker *tracker, TrackedController *
     }
 
     // remember if the sphere was found
-	tc->was_tracked = tc->is_tracked;
-    tc->is_tracked = sphere_found;
-    return sphere_found;
+    tc->was_tracked = tc->is_tracked;
+    tc->is_tracked = sphere_found && tc->quality_check;
+    return tc->is_tracked;
+}
+
+void
+psmove_tracker_update_controller_position_from_contour(PSMoveTracker *tracker, TrackedController *tc, CvSeq* contourBest)
+{
+    tc->old_x = tc->x;
+    tc->old_y = tc->y;
+    tc->old_r = tc->r;
+
+    float a;  // Half the long-axis for the ellipse, or the radius for circle fitting.
+    if (tracker->settings.use_fitEllipse)
+    {
+        // Fit an ellipse to our contour
+        CvBox2D ellipse = cvFitEllipse2(contourBest); // TODO: Roll our own with some constraints.
+        // cvFitEllipse2 can't work with less than 5 points in the cvSeq, but there's no easy way
+        // to count the number of points from a CvSeq**
+
+        // Offset ellipse by our ROI to get in full image coordinates.
+        ellipse.center.x += tc->roi_x;
+        ellipse.center.y += tc->roi_y;
+
+        // Update pixel positions and other variables used for annotations and quality check.
+        tc->x = ellipse.center.x;
+        tc->y = ellipse.center.y;
+        tc->r = ellipse.size.height / 2; // aka el_minor.
+        tc->el_major = ellipse.size.width / 2;
+        tc->el_angle = ellipse.angle;
+
+        a = ellipse.size.width / 2;
+    }
+    else 
+    {
+        // estimate x/y position and radius of the sphere
+        psmove_tracker_estimate_circle_from_contour(contourBest, &tc->x, &tc->y, &tc->r);
+        tc->x += tc->roi_x;
+        tc->y += tc->roi_y;
+        a = tc->r;
+    }
+
+    /* 3D positional estimation based on trigonometry of the ellipse/circle
+    * See: https://github.com/cboulay/psmove-ue4/wiki/Tracker-Algorithm
+    */
+    float f_0 = tracker->cc->focl_x;
+    float x_i = tc->x - tracker->frame->width / 2;  // x-origin from left to middle.
+    float y_i = tracker->frame->height / 2 - tc->y; // y-origin from top to middle, with +y up
+
+    // Calculations
+    float L_i = sqrt(x_i*x_i + y_i*y_i);
+    float j = (L_i + a) / f_0;
+    float k = L_i / f_0;
+    float l = (j - k) / (1 + j*k);
+    float D_0 = SPHERE_RADIUS_CM * sqrt(1 + l*l) / l;
+    float fl = f_0 / L_i; // used several times.
+    float z = D_0 * fl / sqrt(1 + fl*fl);
+    float L = sqrt(D_0*D_0 - z*z);
+    float x = L*x_i / L_i;
+    float y = L*y_i / L_i;
+
+    tc->position_cm = psmove_3axisvector_xyz(x, y, z);
+}
+
+void
+psmove_tracker_filter_2d(PSMoveTracker *tracker, TrackedController *tc, CvSeq* contourBest)
+{
+    // Restore the contour to roi_m
+    IplImage *roi_m = tracker->roiM[tc->roi_level];
+    cvSet(roi_m, TH_COLOR_BLACK, NULL);
+    cvDrawContours(roi_m, contourBest, TH_COLOR_WHITE, TH_COLOR_WHITE, -1, CV_FILLED, 8, cvPoint(0, 0));
+    // Get the mass from the image moments of the restored contour.
+    CvMoments mu;
+    cvMoments(roi_m, &mu, 0);
+    CvPoint com = cvPoint((int)(mu.m10 / mu.m00), (int)(mu.m01 / mu.m00));
+
+    CvPoint oldMCenter = cvPoint((int)tc->mx, (int)tc->my);  // Store the previous center of mass.
+    tc->mx = (float)(com.x + tc->roi_x);
+    tc->my = (float)(com.y + tc->roi_y);
+    CvPoint newMCenter = cvPoint((int)tc->mx, (int)tc->my);
+
+    float oldRadius = tc->r;  // remember the old radius
+
+    // apply radius-smoothing if enabled
+    if (tracker->smoothing_settings.filter_do_2d_r) {
+        // calculate the difference between calculated radius and the smoothed radius of the past
+        float rDiff = fabsf(tc->r - tc->old_r);
+        // calcualte a adaptive smoothing factor
+        // a big distance leads to no smoothing, a small one to strong smoothing
+        float rf = MIN(rDiff / 4.f + 0.15f, 1);
+
+        // apply adaptive smoothing of the radius
+        tc->r = tc->old_r * (1 - rf) + tc->r * rf;
+    }
+
+    // tc->q1 is the ratio of the area of the blob to the area of the perfect circle with given radius.
+    // If the blob is closed, then this is the same as short_axis / long_axis
+    // Higher tc->q1 means more complete and circular blob.
+    int pixelInBlob = cvCountNonZero(roi_m);
+    float pixelInResult = tc->r * tc->r * (float)M_PI;
+    tc->q1 = pixelInBlob / pixelInResult;
+
+    if (tc->q1 > 0.85) {
+        // If the blob is approaching a perfect circle, just use the center of mass for x and y.
+        tc->x = tc->mx;
+        tc->y = tc->my;
+    }
+    else if (tracker->smoothing_settings.filter_do_2d_xy) {
+        // apply x/y coordinate smoothing if enabled
+        // a big distance between the old and new center of mass results in no smoothing
+        // a little one to strong smoothing
+        float diff = sqrtf((float)th_dist_squared(oldMCenter, newMCenter));
+        float f = MIN(diff / 7.f + 0.15f, 1);
+        // apply adaptive smoothing
+        tc->x = tc->old_x * (1 - f) + tc->x * f;
+        tc->y = tc->old_y * (1 - f) + tc->y * f;
+    }
+
+    tc->q3 = tc->r;
+    int radius_shape_and_size_check =
+        tc->q1 > tracker->settings.tracker_quality_t1 &&
+        tc->q3 > tracker->settings.tracker_quality_t3;
+
+    int radius_delta_check = 1;
+    // only perform check if we already found the sphere once
+    if (tc->old_r > 0 && tc->search_tile == 0) {
+        tc->q2 = fabsf(tc->old_r - tc->r) / (tc->old_r + FLT_EPSILON);
+        // additionally check for too big changes
+        radius_delta_check = tc->q2 < tracker->settings.tracker_quality_t2;
+    }
+    else {
+        tc->q2 = FLT_MAX;
+    }
+
+    tc->quality_check = radius_shape_and_size_check && radius_delta_check;
+}
+
+void
+psmove_tracker_filter_3d(PSMoveTracker *tracker, TrackedController *tc)
+{
+    PSMove_3AxisVector measured_position = tc->position_cm;  // Un-filtered version
+
+    // Apply the positional filter to the currently computed position
+    if (psmove_3axisvector_is_valid(&measured_position))
+    {
+        // Compute how long it has been since our last successful position update
+        double time_delta = psmove_timestamp_value(psmove_timestamp_diff(tracker->ts_camera_converted, tc->last_position_update));
+
+        // Re-initialize the positional filter if:
+        // * It has been too long since the last update
+        // * The position wasn't tracked the previous update
+        bool reinitialize_filter = time_delta > POSITION_FILTER_RESET_TIME || !tc->was_tracked;
+
+        switch (tracker->smoothing_type)
+        {
+        case Smoothing_None:	// Don't use any smoothing
+        {
+            tc->position_cm = measured_position;
+        }
+        break;
+        case Smoothing_LowPass:	// A basic low pass filter (default)
+        {
+            if (reinitialize_filter)
+            {
+                psmove_position_lowpass_filter_init(
+                    &measured_position, (PSMovePositionLowPassFilter *)tc->position_filter);
+            }
+            else
+            {
+                psmove_position_lowpass_filter_update(
+                    &tracker->smoothing_settings,
+                    &measured_position,
+                    (PSMovePositionLowPassFilter *)tc->position_filter);
+            }
+
+            tc->position_cm = psmove_position_lowpass_filter_get_position(
+                (PSMovePositionLowPassFilter *)tc->position_filter);
+        }
+        break;
+        case Smoothing_Kalman:	// A more expensive Kalman filter 
+        {
+            if (reinitialize_filter)
+            {
+                psmove_position_lowpass_filter_init(
+                    &measured_position, (PSMovePositionLowPassFilter *)tc->position_filter);
+            }
+            else
+            {
+                // TODO: Project accelerometer measurement into camera space
+                PSMove_3AxisVector acceleration_control = psmove_3axisvector_xyz(0.f, 0.f, 0.f);
+
+                psmove_position_kalman_filter_update(
+                    &tracker->smoothing_settings,
+                    &measured_position,
+                    &acceleration_control,
+                    time_delta,
+                    (PSMovePositionKalmanFilter *)tc->position_filter);
+            }
+
+            tc->position_cm = psmove_position_kalman_filter_get_position(
+                (PSMovePositionKalmanFilter *)tc->position_filter);
+        }
+        break;
+        }
+
+        // Update the position update timestamp
+        tc->last_position_update = tracker->ts_camera_converted;
+    }
 }
 
 int
@@ -2084,27 +1991,6 @@ psmove_tracker_update(PSMoveTracker *tracker, PSMove *move)
     for_each_controller(tracker, tc) {
         if (move == NULL || tc->move == move) {
             spheres_found += psmove_tracker_update_controller(tracker, tc);
-        }
-    }
-
-    tracker->duration = psmove_util_get_ticks() - started;
-
-    return spheres_found;
-}
-
-int
-psmove_tracker_update_cbb(PSMoveTracker *tracker, PSMove *move)
-{
-    psmove_return_val_if_fail(tracker->frame != NULL, 0);
-
-    int spheres_found = 0;
-
-    long started = psmove_util_get_ticks();
-
-    TrackedController *tc;
-    for_each_controller(tracker, tc) {
-        if (move == NULL || tc->move == move) {
-            spheres_found += psmove_tracker_update_controller_cbb(tracker, tc);
         }
     }
 
@@ -2218,6 +2104,10 @@ psmove_tracker_free(PSMoveTracker *tracker)
     cvReleaseStructuringElement(&tracker->kCalib);
 
     camera_control_delete(tracker->cc);
+
+    PSMoveTrackerSmoothingSettings* smoothing_settings;
+    psmove_tracker_get_smoothing_settings(tracker, smoothing_settings);
+    psmove_tracker_save_smoothing_settings(tracker, smoothing_settings);
     free(tracker);
 }
 
@@ -2467,7 +2357,7 @@ void psmove_tracker_annotate(PSMoveTracker* tracker) {
             cvCircle(frame, p, (int)tc->r, TH_COLOR_WHITE, 1, 8, 0);
 
             // Draw the ellipse
-            cvEllipse(frame, cvPoint(tc->x, tc->y), cvSize(tc->r, tc->el_minor), tc->el_angle, 0, 360, TH_COLOR_YELLOW, 1, 8, 0);
+            cvEllipse(frame, cvPoint(tc->x, tc->y), cvSize(tc->el_major, tc->r), tc->el_angle, 0, 360, TH_COLOR_YELLOW, 1, 8, 0);
 
         } else {
             roi_w = tracker->roiI[tc->roi_level]->width;

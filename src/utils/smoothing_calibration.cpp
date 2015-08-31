@@ -193,7 +193,7 @@ main(int arg, char** args)
 				psmove_tracker_update_image(tracker);
 
 				// Compute the raw position of the controller this frame
-				psmove_tracker_update_cbb(tracker, move);
+				psmove_tracker_update(tracker, move);
 				psmove_tracker_annotate(tracker);
 				psmove_tracker_get_location(tracker, move, 
 					&position_samples[sample_count].x, 

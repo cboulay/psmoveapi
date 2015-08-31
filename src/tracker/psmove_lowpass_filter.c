@@ -91,41 +91,16 @@ psmove_position_lowpass_filter_update(
 		}
 		else
 		{
-			if (tracker_settings->tracker_adaptive_xy || tracker_settings->tracker_adaptive_z) 
-			{
-				// Traveling 10 cm in one frame should have 0 smoothing
-				// Traveling 0+noise cm in one frame should have
-				// 60% xy smoothing, 80% z smoothing
-				float distance = psmove_3axisvector_length_between(&filter_state->position, measured_position);
-			
-				if (tracker_settings->tracker_adaptive_xy)
-				{
-					float new_xy_weight = clampf01(lerpf(0.40f, 1.00f, distance/10.f));
+			// Traveling 10 cm in one frame should have 0 smoothing
+			// Traveling 0+noise cm in one frame should have
+			// 60% xy smoothing, 80% z smoothing
+			float distance = psmove_3axisvector_length_between(&filter_state->position, measured_position);
+			float new_xy_weight = clampf01(lerpf(0.40f, 1.00f, distance/10.f));
+			filter_state->position.x = lerpf(filter_state->position.x, measured_position->x, new_xy_weight);
+			filter_state->position.y = lerpf(filter_state->position.y, measured_position->y, new_xy_weight);
 
-					filter_state->position.x = lerpf(filter_state->position.x, measured_position->x, new_xy_weight);
-					filter_state->position.y = lerpf(filter_state->position.y, measured_position->y, new_xy_weight);
-				}
-				else
-				{
-					filter_state->position.x = measured_position->x;
-					filter_state->position.y = measured_position->y;
-				}
-
-				if (tracker_settings->tracker_adaptive_z)
-				{
-					float new_z_weight = clampf01(lerpf(0.20f, 1.0f, distance/10.f));
-
-					filter_state->position.z = lerpf(filter_state->position.z, measured_position->z, new_z_weight);
-				}
-				else
-				{
-					filter_state->position.z = measured_position->z;
-				}
-			}
-			else
-			{
-				filter_state->position= *measured_position;
-			}
+			float new_z_weight = clampf01(lerpf(0.20f, 1.0f, distance/10.f));
+			filter_state->position.z = lerpf(filter_state->position.z, measured_position->z, new_z_weight);
 		}
 	}
 }

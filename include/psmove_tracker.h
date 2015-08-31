@@ -97,13 +97,13 @@ enum PSMoveTracker_Smoothing_Type {
 };
 
 struct _PSMoveTrackerSmoothingSettings {
-	// Low Pass Filter Options
-    int tracker_adaptive_xy; // specifies to use a adaptive x/y smoothing
-    int tracker_adaptive_z; // specifies to use a adaptive z smoothing
-
-	// Kalman Filter Options
-	float acceleration_variance;
-	PSMove_3AxisTransform measurement_covariance;
+    // Low Pass Filter Options
+    int filter_do_2d_xy;        /* [1] specifies to use a adaptive x/y smoothing on pixel location */
+    int filter_do_2d_r;         /* [1] specifies to use a adaptive radius smoothing on 2d blob  */
+    enum PSMoveTracker_Smoothing_Type filter_3d_type;
+    // Kalman Filter Options
+    float acceleration_variance;
+    PSMove_3AxisTransform measurement_covariance;
 };
 typedef struct _PSMoveTrackerSmoothingSettings PSMoveTrackerSmoothingSettings;
 
@@ -119,7 +119,7 @@ typedef struct {
     enum PSMove_Bool camera_auto_white_balance; /* [PSMove_False] */
     int camera_exposure;                        /* [(255 * 15) / 0xFFFF] [0,0xFFFF] */
     int camera_brightness;                      /* [0] [0,0xFFFF] */
-    enum PSMove_Bool camera_mirror;                    /* [PSMove_True] mirror camera image horizontally */
+    enum PSMove_Bool camera_mirror;             /* [PSMove_False] mirror camera image horizontally */
 
     /* Settings for camera calibration process */
     enum PSMoveTracker_Exposure exposure_mode;  /* [Exposure_LOW] exposure mode for setting target luminance */
@@ -137,8 +137,8 @@ typedef struct {
     int color_value_filter_range;               /* [85] +- range of Value window of the hsv-colorfilter  */
 
     /* Settings for tracker algorithms */
-    int tracker_adaptive_xy;                    /* [1] specifies to use a adaptive x/y smoothing  */
-    int tracker_adaptive_z;                     /* [1] specifies to use a adaptive z smoothing  */
+    int use_fitEllipse;                         /* [0] estimate circle from blob; [1] use fitEllipse */
+
     float color_adaption_quality_t;             /* [35] maximal distance (calculated by 'psmove_tracker_hsvcolor_diff') between the first estimated color and the newly estimated  */
     float color_update_rate;                    /* [1] every x seconds adapt to the color, 0 means no adaption  */
     // size of "search" tiles when tracking is lost
@@ -165,6 +165,7 @@ typedef struct {
 
 } PSMoveTrackerSettings; /*!< Structure for storing tracker settings */
 
+
 /**
 * \brief Initializes a tracker settings with default values
 *
@@ -174,6 +175,20 @@ typedef struct {
 **/
 ADDAPI void
 ADDCALL psmove_tracker_settings_set_default(PSMoveTrackerSettings *settings);
+
+/**
+* \brief Copies current tracker settings from tracker into settings.
+*
+**/
+ADDAPI void
+ADDCALL psmove_tracker_get_settings(PSMoveTracker *tracker, PSMoveTrackerSettings *settings);
+
+/**
+* \brief Copies settings into tracker settings.
+*
+**/
+ADDAPI void
+ADDCALL psmove_tracker_set_settings(PSMoveTracker *tracker, PSMoveTrackerSettings *settings);
 
 /**
  * \brief Create a new PS Move Tracker instance and open the camera
@@ -327,6 +342,12 @@ ADDCALL psmove_tracker_set_exposure(PSMoveTracker *tracker, enum PSMoveTracker_E
 ADDAPI enum PSMoveTracker_Exposure
 ADDCALL psmove_tracker_get_exposure(PSMoveTracker *tracker);
 
+ADDAPI void
+ADDCALL psmove_tracker_get_smoothing_settings(PSMoveTracker *tracker, PSMoveTrackerSmoothingSettings *smoothing_settings);
+
+ADDAPI void
+ADDCALL psmove_tracker_set_smoothing_settings(PSMoveTracker *tracker, PSMoveTrackerSmoothingSettings *smoothing_settings);
+
 /**
 * \brief Initializes a tracker smoothing settings with default values
 *
@@ -336,14 +357,14 @@ ADDAPI void
 ADDCALL psmove_tracker_smoothing_settings_set_default(PSMoveTrackerSmoothingSettings *smoothing_settings);
 
 /**
-* \brief Save the giving smoothing settings to disk
+* \brief Save the given smoothing settings to disk
 *
-* These values are take precedence over the defaults.
+* These values when loaded, take precedence over the defaults.
 *
 * \return A new PSMove_True on success, PSMove_False on IO error
 **/
 ADDAPI enum PSMove_Bool
-ADDCALL psmove_save_smoothing_settings(PSMoveTrackerSmoothingSettings *smoothing_settings);
+ADDCALL psmove_tracker_save_smoothing_settings(PSMoveTrackerSmoothingSettings *smoothing_settings);
 
 /**
 * \brief Load the smoothing settings from disk
@@ -352,7 +373,7 @@ ADDCALL psmove_save_smoothing_settings(PSMoveTrackerSmoothingSettings *smoothing
 *
 * \return A new PSMove_True on success, PSMove_False on IO error**/
 ADDAPI enum PSMove_Bool
-ADDCALL psmove_load_smoothing_settings(PSMoveTrackerSmoothingSettings *out_smoothing_settings);
+ADDCALL psmove_tracker_load_smoothing_settings(PSMoveTrackerSmoothingSettings *out_smoothing_settings);
 
 /**
 * \brief Set the positional smoothing algorithm to use.
@@ -369,11 +390,11 @@ ADDCALL psmove_tracker_set_smoothing_type(PSMoveTracker *tracker, enum PSMoveTra
 * This function enables (1) or disables (0) smoothing for xy and z dimensions.
 *
 * \param tracker A valid \ref PSMoveTracker handle
-* \param adaptive_xy int 0 or 1
-* \param adaptive_z int 0 or 1
+* \param filter_lowpass_do_xy int 0 or 1
+* \param filter_lowpass_do_z int 0 or 1
 **/
 ADDAPI void
-ADDCALL psmove_tracker_set_smoothing(PSMoveTracker *tracker, int adaptive_xy, int adaptive_z);
+ADDCALL psmove_tracker_set_smoothing_2d(PSMoveTracker *tracker, int filter_lowpass_do_xy, int filter_lowpass_do_z);
 
 /**
  * \brief Enable or disable camera image deinterlacing (line doubling)
@@ -587,8 +608,8 @@ ADDCALL psmove_tracker_update_image(PSMoveTracker *tracker);
  * \brief Process incoming data and update tracking information
  *
  * This function tracks one or all motion controllers in the camera
- * image, and updates tracking information such as position, radius
- * and camera color.
+ * image, and updates tracking information such as pixel position,
+ * 3D position, and camera color.
  *
  * This function must be called after psmove_tracker_update_image().
  *
@@ -600,24 +621,6 @@ ADDCALL psmove_tracker_update_image(PSMoveTracker *tracker);
  **/
 ADDAPI int
 ADDCALL psmove_tracker_update(PSMoveTracker *tracker, PSMove *move);
-
-/**
- * \brief Process incoming data and update tracking information
- *
- * This function tracks one or all motion controllers in the camera
- * image, and updates tracking information such as 3D position
- * and camera color.
- *
- * This function must be called after psmove_tracker_update_image().
- *
- * \param tracker A valid \ref PSMoveTracker handle
- * \param move A valid \ref PSMove handle (to update a single controller)
- *             or \c NULL to update all enabled controllers at once
- *
- * \return Nonzero if tracking was successful, zero otherwise
- **/
-ADDAPI int
-ADDCALL psmove_tracker_update_cbb(PSMoveTracker *tracker, PSMove *move);
 
 /**
  * \brief Draw debugging information onto the current camera image
@@ -720,34 +723,6 @@ PSMove *move, float *xcm, float *ycm, float *zcm);
 ADDAPI void
 ADDCALL psmove_tracker_reset_location(PSMoveTracker *tracker, PSMove *move);
 
-/**
-* \brief Get the current 3D location of a tracked controller
-*
-* This function obtains the location of a controller in the
-* world in cm.
-*
-* \param tracker A valid \ref PSMoveTracker handle
-* \param move A valid \ref PSMove handle
-* \param xcm A pointer to store the X part of the location, or \c NULL
-* \param ycm A pointer to store the Y part of the location, or \c NULL
-* \param zcm A pointer to store the Z part of the location, or \c NULL
-*
-* \return The age of the sensor reading in milliseconds, or -1 on error
-**/
-ADDAPI int
-ADDCALL psmove_tracker_get_location(PSMoveTracker *tracker,
-PSMove *move, float *xcm, float *ycm, float *zcm);
-
-
-/**
-* \brief Rest the location offsets to the current location
-*
-* \param tracker A valid \ref PSMoveTracker handle
-* \param move A valid \ref PSMove handle
-*
-**/
-ADDAPI void
-ADDCALL psmove_tracker_reset_location(PSMoveTracker *tracker, PSMove *move);
 
 /**
  * \brief Get the camera image size for the tracker

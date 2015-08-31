@@ -64,13 +64,23 @@ int main(int arg, char** args) {
     PSMoveTrackerSettings settings;
     psmove_tracker_settings_set_default(&settings);
     settings.color_mapping_max_age = 0;
+    settings.use_fitEllipse = 1;
+    settings.camera_mirror = PSMove_True;
     PSMoveTracker* tracker = psmove_tracker_new_with_settings(&settings);
     if (!tracker)
     {
         fprintf(stderr, "Could not init PSMoveTracker.\n");
         return 1;
     }
-    psmove_tracker_set_mirror(tracker, PSMove_True);
+    PSMoveTrackerSmoothingSettings smoothing_settings;
+    psmove_tracker_smoothing_settings_set_default(&smoothing_settings);
+    smoothing_settings.filter_do_2d_r = 0;
+    smoothing_settings.filter_do_2d_xy = 0;
+    smoothing_settings.filter_3d_type = Smoothing_LowPass;
+    psmove_tracker_set_smoothing_settings(tracker, &smoothing_settings);
+
+    //psmove_tracker_smoothing_settings_set_default(PSMoveTrackerSmoothingSettings *smoothing_settings);
+
     fprintf(stderr, "OK\n");
 
     for (i=0; i<count; i++) {
@@ -100,9 +110,6 @@ int main(int arg, char** args) {
     while ((cvWaitKey(1) & 0xFF) != 27) {
         psmove_tracker_update_image(tracker);
         psmove_tracker_update(tracker, NULL);
-        psmove_tracker_get_position(tracker, controllers[0], &x, &y, &r);
-        psmove_tracker_update_cbb(tracker, NULL);
-        psmove_tracker_get_location(tracker, controllers[0], &xcm, &ycm, &zcm);
         psmove_tracker_annotate(tracker);
 
         frame = psmove_tracker_get_frame(tracker);
@@ -110,6 +117,8 @@ int main(int arg, char** args) {
             cvShowImage("live camera feed", frame);
         }
 
+        psmove_tracker_get_position(tracker, controllers[0], &x, &y, &r);
+        psmove_tracker_get_location(tracker, controllers[0], &xcm, &ycm, &zcm);
         printf("x  , %6.2f, y  , %6.2f, r  , %6.2f\nxcm, %6.2f, ycm, %6.2f, zcm, %6.2f\n",
         	x, y, r, xcm, ycm, zcm);
 
