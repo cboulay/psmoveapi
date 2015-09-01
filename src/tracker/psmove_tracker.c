@@ -1918,12 +1918,13 @@ psmove_tracker_filter_3d(PSMoveTracker *tracker, TrackedController *tc)
     if (psmove_3axisvector_is_valid(&measured_position))
     {
         // Compute how long it has been since our last successful position update
-        double time_delta = psmove_timestamp_value(psmove_timestamp_diff(tracker->ts_camera_converted, tc->last_position_update));
+        double seconds_since_position_update = 
+            psmove_timestamp_value(psmove_timestamp_diff(tracker->ts_camera_converted, tc->last_position_update));
 
         // Re-initialize the positional filter if:
         // * It has been too long since the last update
         // * The position wasn't tracked the previous update
-        bool reinitialize_filter = time_delta > POSITION_FILTER_RESET_TIME || !tc->was_tracked;
+        bool reinitialize_filter = seconds_since_position_update > POSITION_FILTER_RESET_TIME || !tc->was_tracked;
 
         switch (tracker->smoothing_type)
         {
@@ -1967,7 +1968,6 @@ psmove_tracker_filter_3d(PSMoveTracker *tracker, TrackedController *tc)
                     &tracker->smoothing_settings,
                     &measured_position,
                     &acceleration_control,
-                    time_delta,
                     (PSMovePositionKalmanFilter *)tc->position_filter);
             }
 

@@ -76,7 +76,6 @@ ADDCALL psmove_position_kalman_filter_update(
 	const PSMoveTrackerSmoothingSettings *tracker_settings,
 	const PSMove_3AxisVector *measured_position,	// The position measured by the sensors.
 	const PSMove_3AxisVector *acceleration_control,	// The controller-space acceleration measured on the controller.
-	const float time_delta,				// The time delta in seconds
 	PSMovePositionKalmanFilter *filter_state);
 
 #ifdef __cplusplus

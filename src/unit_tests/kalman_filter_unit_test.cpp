@@ -257,7 +257,6 @@ psmove_kalman_filter_test_sample_data()
 				&settings, 
 				&raw_position, 
 				&raw_acceleration, 
-				time_delta, 
 				position_filter);
 			
 			PSMove_3AxisVector filtered_position = psmove_position_kalman_filter_get_position(position_filter);
@@ -299,6 +298,7 @@ psmove_kalman_filter_test_sample_data()
 			}
 
 			SimTime += time_delta;
+            psmove_sleep((unsigned long)(time_delta * 1000.f));
 		}
 	}
 

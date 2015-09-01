@@ -325,6 +325,9 @@ main(int arg, char** args)
 				}				
 			}
 
+            // Set the smoothing settings back to the Kalman filter before saving out to disk
+            smoothing_settings.filter_3d_type= Smoothing_Kalman;
+
 			// Save the calibration settings
 			if (psmove_tracker_save_smoothing_settings(&smoothing_settings) == PSMove_False)
 			{

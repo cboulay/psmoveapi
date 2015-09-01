@@ -57,6 +57,9 @@ struct _PSMovePositionKalmanFilter {
 	// In this case 'R' is a 3x3 matrix computed at calibration time
 	Eigen::Matrix<float, 3, 3> measurement_noise_matrix;
 
+    // The last time we ran the filter update
+    PSMove_timestamp last_filter_update;
+
 	bool is_initialized;
 };
 
@@ -122,6 +125,9 @@ psmove_position_kalman_filter_init(
 	filter_state->state_vector(4,0) = 0.f;
 	filter_state->state_vector(5,0) = 0.f;
 
+    // Record now as the last time we updated the filter
+    filter_state->last_filter_update= psmove_timestamp();
+
 	filter_state->is_initialized = true;
 }
 
@@ -170,7 +176,6 @@ psmove_position_kalman_filter_update(
 	const PSMoveTrackerSmoothingSettings *tracker_settings,
 	const PSMove_3AxisVector *measured_position,	// The position measured by the sensors.
 	const PSMove_3AxisVector *acceleration_control,	// The world space acceleration measured on the controller.
-	const float time_delta,				// The time delta in seconds
 	PSMovePositionKalmanFilter *filter_state)
 {
 	// Initialize the filter if it hasn't been initialized already
@@ -179,6 +184,15 @@ psmove_position_kalman_filter_update(
 		psmove_position_kalman_filter_init(tracker_settings, measured_position, filter_state);
 		return;
 	}
+
+    // Record now as the last time we updated the filter
+    PSMove_timestamp now = psmove_timestamp();
+
+    // Compute how long it has been since our last successful position update
+    double time_delta = psmove_timestamp_value(psmove_timestamp_diff(now, filter_state->last_filter_update));
+
+    // Remember now as the last time we updated
+    filter_state->last_filter_update= now;
 
 	// 'x_(k|k-1)' - Predicted state given the previous state
 	// In this case a 6x1 vector containing position and velocity
