@@ -251,9 +251,19 @@ ADDCALL psmove_tracker_new_with_camera(int camera);
 ADDAPI PSMoveTracker *
 ADDCALL psmove_tracker_new_with_camera_and_settings(int camera, PSMoveTrackerSettings *settings);
 
+/**
+ * \brief Instructs the PSMoveTracker to load its distortion settings from file.
+ *
+ * \param tracker A valid \ref PSMoveTracker handle
+ **/
 ADDAPI void
 ADDCALL psmove_tracker_load_distortion(PSMoveTracker *tracker);
 
+/**
+ * \brief Instructs the PSMoveTracker to set its distortion to 0.
+ *
+ * \param tracker A valid \ref PSMoveTracker handle
+ **/
 ADDAPI void
 ADDCALL psmove_tracker_reset_distortion(PSMoveTracker *tracker);
 
@@ -342,11 +352,25 @@ ADDCALL psmove_tracker_set_exposure(PSMoveTracker *tracker, enum PSMoveTracker_E
 ADDAPI enum PSMoveTracker_Exposure
 ADDCALL psmove_tracker_get_exposure(PSMoveTracker *tracker);
 
-ADDAPI void
-ADDCALL psmove_tracker_get_smoothing_settings(PSMoveTracker *tracker, PSMoveTrackerSmoothingSettings *smoothing_settings);
-
+/**
+ * \brief Set the smoothing filter settings.
+ *
+ * \param tracker A valid \ref PSMoveTracker handle
+ *
+ * \param smoothing_settings A valid \ref PSMoveTrackerSmoothingSettings handle
+ **/
 ADDAPI void
 ADDCALL psmove_tracker_set_smoothing_settings(PSMoveTracker *tracker, PSMoveTrackerSmoothingSettings *smoothing_settings);
+
+/**
+ * \brief Copy the tracker's smoothing filter settings to smoothing_settings.
+ *
+ * \param tracker A valid \ref PSMoveTracker handle
+ *
+ * \param smoothing_settings A valid \ref PSMoveTrackerSmoothingSettings handle
+ **/
+ADDAPI void
+ADDCALL psmove_tracker_get_smoothing_settings(PSMoveTracker *tracker, PSMoveTrackerSmoothingSettings *smoothing_settings);
 
 /**
 * \brief Initializes a tracker smoothing settings with default values

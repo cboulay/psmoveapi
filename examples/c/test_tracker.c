@@ -109,7 +109,8 @@ int main(int arg, char** args) {
 	float xcm, ycm, zcm;
     while ((cvWaitKey(1) & 0xFF) != 27) {
         psmove_tracker_update_image(tracker);
-        psmove_tracker_update(tracker, NULL);
+        psmove_tracker_get_position(tracker, controllers[0], &x, &y, &r);
+        psmove_tracker_get_location(tracker, controllers[0], &xcm, &ycm, &zcm);
         psmove_tracker_annotate(tracker);
 
         frame = psmove_tracker_get_frame(tracker);
@@ -117,8 +118,6 @@ int main(int arg, char** args) {
             cvShowImage("live camera feed", frame);
         }
 
-        psmove_tracker_get_position(tracker, controllers[0], &x, &y, &r);
-        psmove_tracker_get_location(tracker, controllers[0], &xcm, &ycm, &zcm);
         printf("x  , %6.2f, y  , %6.2f, r  , %6.2f\nxcm, %6.2f, ycm, %6.2f, zcm, %6.2f\n",
         	x, y, r, xcm, ycm, zcm);
 

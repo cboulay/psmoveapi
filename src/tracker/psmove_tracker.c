@@ -580,18 +580,18 @@ psmove_tracker_get_exposure(PSMoveTracker *tracker)
 }
 
 void
-psmove_tracker_get_smoothing_settings(PSMoveTracker *tracker, PSMoveTrackerSmoothingSettings *smoothing_settings)
-{
-    psmove_return_if_fail(tracker != NULL);
-    *smoothing_settings = tracker->smoothing_settings;
-}
-
-void
 psmove_tracker_set_smoothing_settings(PSMoveTracker *tracker, PSMoveTrackerSmoothingSettings *smoothing_settings)
 {
     psmove_return_if_fail(tracker != NULL);
     tracker->smoothing_settings = *smoothing_settings;
     psmove_tracker_set_smoothing_type(tracker, tracker->smoothing_settings.filter_3d_type);
+}
+
+void
+psmove_tracker_get_smoothing_settings(PSMoveTracker *tracker, PSMoveTrackerSmoothingSettings *smoothing_settings)
+{
+    psmove_return_if_fail(tracker != NULL);
+    *smoothing_settings = tracker->smoothing_settings;
 }
 
 void
@@ -1697,7 +1697,7 @@ psmove_tracker_update_controller(PSMoveTracker *tracker, TrackedController *tc)
             }
             else if (contour_is_ok == PSMove_True) // ROI already recentered
             {
-                /* These next few lines call separate functions to do tracking and filtering. */
+                /* Steps 6-8 are done in separate functions */
                 // Get the tc->x, y, r, position_cm
                 psmove_tracker_update_controller_position_from_contour(tracker, tc, contourBest);
                 // Filter results, if required
@@ -1722,7 +1722,9 @@ psmove_tracker_update_controller(PSMoveTracker *tracker, TrackedController *tc)
                         sphere_found = 0;
                     }
                 }
-
+                // Update the position update timestamp
+                tc->last_position_update = tracker->ts_camera_converted;
+                
                 sphere_found = 1; // breaks out of while loop
             }
         }
@@ -1808,6 +1810,10 @@ psmove_tracker_update_controller_position_from_contour(PSMoveTracker *tracker, T
         tc->x += tc->roi_x;
         tc->y += tc->roi_y;
         a = tc->r;
+        
+        //TODO: Use THP method to get z, then calculate x and y from that.
+        //float z = psmove_tracker_distance_from_radius(tracker, &(tc->r));
+        
     }
 
     /* 3D positional estimation based on trigonometry of the ellipse/circle
@@ -1970,9 +1976,6 @@ psmove_tracker_filter_3d(PSMoveTracker *tracker, TrackedController *tc)
         }
         break;
         }
-
-        // Update the position update timestamp
-        tc->last_position_update = tracker->ts_camera_converted;
     }
 }
 
@@ -2007,6 +2010,12 @@ psmove_tracker_get_position(PSMoveTracker *tracker, PSMove *move,
     TrackedController *tc = psmove_tracker_find_controller(tracker, move);
 
     if (tc) {
+        
+        if (psmove_timestamp_value(psmove_timestamp_diff(tracker->ts_camera_converted, tc->last_position_update)) > 0.001)
+        {
+            psmove_tracker_update(tracker, move);
+        }
+        
         if (x) {
             *x = tc->x;
         }
@@ -2029,10 +2038,16 @@ psmove_tracker_get_location(PSMoveTracker *tracker, PSMove *move, float *xcm, fl
 {
     psmove_return_val_if_fail(tracker != NULL, 0);
     psmove_return_val_if_fail(move != NULL, 0);
+    
     TrackedController *tc = psmove_tracker_find_controller(tracker, move);
 
     if (tc) 
 	{
+        if (psmove_timestamp_value(psmove_timestamp_diff(tracker->ts_camera_converted, tc->last_position_update)) > 0)
+        {
+            psmove_tracker_update(tracker, move);
+        }
+        
         if (xcm) 
 		{
             *xcm = tc->position_cm.x - tc->position_offset.x;
