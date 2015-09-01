@@ -647,17 +647,17 @@ psmove_tracker_load_smoothing_settings(PSMoveTrackerSmoothingSettings *out_smoot
 	psmove_goto_if_fail(strcmp(s_value, "value") == 0, finish);
 
     char s_filter_do_2d_xy[64];
-    result = fscanf(fp, "%19s,%d\n", &s_filter_do_2d_xy, &smoothing_settings.filter_do_2d_xy);
+    result = fscanf(fp, "%15s,%d\n", &s_filter_do_2d_xy, &smoothing_settings.filter_do_2d_xy);
 	psmove_goto_if_fail(result == 2, finish);
     psmove_goto_if_fail(strcmp(s_filter_do_2d_xy, "filter_do_2d_xy") == 0, finish);
 
     char s_filter_do_2d_r[64];
-    result = fscanf(fp, "%18s,%d\n", &s_filter_do_2d_r, &smoothing_settings.filter_do_2d_r);
+    result = fscanf(fp, "%14s,%d\n", &s_filter_do_2d_r, &smoothing_settings.filter_do_2d_r);
 	psmove_goto_if_fail(result == 2, finish);
     psmove_goto_if_fail(strcmp(s_filter_do_2d_r, "filter_do_2d_r") == 0, finish);
 
     char s_filter_3d_type[64];
-    result = fscanf(fp, "%18s,%d\n", &s_filter_3d_type, &smoothing_settings.filter_3d_type);
+    result = fscanf(fp, "%14s,%d\n", &s_filter_3d_type, &smoothing_settings.filter_3d_type);
     psmove_goto_if_fail(result == 2, finish);
     psmove_goto_if_fail(strcmp(s_filter_3d_type, "filter_3d_type") == 0, finish);
 
@@ -2118,9 +2118,11 @@ psmove_tracker_free(PSMoveTracker *tracker)
 
     camera_control_delete(tracker->cc);
 
+    /*
     PSMoveTrackerSmoothingSettings smoothing_settings;
     psmove_tracker_get_smoothing_settings(tracker, &smoothing_settings);
     psmove_tracker_save_smoothing_settings(&smoothing_settings);
+    */
     free(tracker);
 }
 
