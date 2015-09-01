@@ -51,8 +51,8 @@ enum eCalibrationState
 };
 
 //-- macros -----
-#define LOG_MESSAGE(f_, ...) fprintf(stdout, (f_), __VA_ARGS__);
-#define LOG_ERROR(f_, ...) fprintf(stderr, (f_), __VA_ARGS__);
+#define LOG_MESSAGE(f_, ...) fprintf(stdout, (f_), ##__VA_ARGS__)
+#define LOG_ERROR(f_, ...) fprintf(stderr, (f_), ##__VA_ARGS__)
 
 //-- prototypes -----
 static bool is_move_stable_and_aligned_with_gravity(PSMove *move);
@@ -326,7 +326,7 @@ main(int arg, char** args)
 			}
 
 			// Save the calibration settings
-			if (psmove_save_smoothing_settings(&smoothing_settings) == PSMove_False)
+			if (psmove_tracker_save_smoothing_settings(&smoothing_settings) == PSMove_False)
 			{
 				LOG_ERROR("\rFailed to save smoothing settings file!.\n");
 			}

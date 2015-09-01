@@ -1849,8 +1849,6 @@ psmove_tracker_filter_2d(PSMoveTracker *tracker, TrackedController *tc, CvSeq* c
     tc->my = (float)(com.y + tc->roi_y);
     CvPoint newMCenter = cvPoint((int)tc->mx, (int)tc->my);
 
-    float oldRadius = tc->r;  // remember the old radius
-
     // apply radius-smoothing if enabled
     if (tracker->smoothing_settings.filter_do_2d_r) {
         // calculate the difference between calculated radius and the smoothed radius of the past
@@ -2105,9 +2103,9 @@ psmove_tracker_free(PSMoveTracker *tracker)
 
     camera_control_delete(tracker->cc);
 
-    PSMoveTrackerSmoothingSettings* smoothing_settings;
-    psmove_tracker_get_smoothing_settings(tracker, smoothing_settings);
-    psmove_tracker_save_smoothing_settings(tracker, smoothing_settings);
+    PSMoveTrackerSmoothingSettings smoothing_settings;
+    psmove_tracker_get_smoothing_settings(tracker, &smoothing_settings);
+    psmove_tracker_save_smoothing_settings(&smoothing_settings);
     free(tracker);
 }
 

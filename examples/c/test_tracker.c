@@ -73,7 +73,7 @@ int main(int arg, char** args) {
         return 1;
     }
     PSMoveTrackerSmoothingSettings smoothing_settings;
-    psmove_tracker_smoothing_settings_set_default(&smoothing_settings);
+    psmove_tracker_get_smoothing_settings(tracker, &smoothing_settings);
     smoothing_settings.filter_do_2d_r = 0;
     smoothing_settings.filter_do_2d_xy = 0;
     smoothing_settings.filter_3d_type = Smoothing_LowPass;
