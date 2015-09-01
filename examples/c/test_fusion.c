@@ -63,14 +63,28 @@ int main(int arg, char** args) {
     int result;
 
     fprintf(stderr, "Trying to init PSMoveTracker...");
-    PSMoveTracker* tracker = psmove_tracker_new();
+    
+    PSMoveTrackerSettings settings;
+    psmove_tracker_settings_set_default(&settings);
+    settings.color_mapping_max_age = 0;
+    settings.exposure_mode = Exposure_LOW;
+    settings.use_fitEllipse = 1;
+    settings.camera_mirror = PSMove_True;
+    PSMoveTracker* tracker = psmove_tracker_new_with_settings(&settings);
+    
     if (!tracker)
     {
         fprintf(stderr, "Could not init PSMoveTracker.\n");
         return 1;
     }
-    psmove_tracker_set_mirror(tracker, PSMove_True);
     fprintf(stderr, "OK\n");
+    
+    PSMoveTrackerSmoothingSettings smoothing_settings;
+    psmove_tracker_get_smoothing_settings(tracker, &smoothing_settings);
+    smoothing_settings.filter_do_2d_r = 0;
+    smoothing_settings.filter_do_2d_xy = 0;
+    smoothing_settings.filter_3d_type = Smoothing_Kalman;
+    psmove_tracker_set_smoothing_settings(tracker, &smoothing_settings);
 
     for (i=0; i<count; i++) {
         printf("Opening controller %d\n", i);

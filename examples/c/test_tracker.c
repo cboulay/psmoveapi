@@ -63,8 +63,8 @@ int main(int arg, char** args) {
     fprintf(stderr, "Trying to init PSMoveTracker...");
     PSMoveTrackerSettings settings;
     psmove_tracker_settings_set_default(&settings);
+    settings.exposure_mode = Exposure_LOW;
     settings.color_mapping_max_age = 0;
-    settings.use_fitEllipse = 1;
     settings.camera_mirror = PSMove_True;
     PSMoveTracker* tracker = psmove_tracker_new_with_settings(&settings);
     if (!tracker)
@@ -72,14 +72,8 @@ int main(int arg, char** args) {
         fprintf(stderr, "Could not init PSMoveTracker.\n");
         return 1;
     }
-    PSMoveTrackerSmoothingSettings smoothing_settings;
-    psmove_tracker_get_smoothing_settings(tracker, &smoothing_settings);
-    smoothing_settings.filter_do_2d_r = 0;
-    smoothing_settings.filter_do_2d_xy = 0;
-    smoothing_settings.filter_3d_type = Smoothing_LowPass;
-    psmove_tracker_set_smoothing_settings(tracker, &smoothing_settings);
-
-    //psmove_tracker_smoothing_settings_set_default(PSMoveTrackerSmoothingSettings *smoothing_settings);
+    
+    // For an example that changes the smoothing settings, see test_fusion
 
     fprintf(stderr, "OK\n");
 
