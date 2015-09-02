@@ -428,7 +428,6 @@ psmove_tracker_enable_with_color_internal(PSMoveTracker *tracker, PSMove *move, 
  * move  - (in) A valid PSMove controller
  * rgb - (in) The color the PSMove controller's sphere will be lit.
  */
-
 int
 psmove_tracker_old_color_is_tracked(PSMoveTracker* tracker, PSMove* move, struct PSMove_RGBValue rgb);
 
@@ -1812,8 +1811,14 @@ psmove_tracker_update_controller_position_from_contour(PSMoveTracker *tracker, T
         a = tc->r;
         
         //TODO: Use THP method to get z, then calculate x and y from that.
-        //float z = psmove_tracker_distance_from_radius(tracker, &(tc->r));
-        
+        /*
+        float z = psmove_tracker_distance_from_radius(tracker, &(tc->r));
+        zcm = psmove_tracker_distance_from_radius(tracker, tc->r);
+        float xi_sq = x_i*x_i;
+        float yi_sq = y_i*y_i;
+        float xcm = sqrt( ((zcm * zcm) / (f_0 * f_0)) * (xi_sq + yi_sq) / (1 + (yi_sq / xi_sq)) );
+        float ycm = xcm * y_i / x_i;
+        */
     }
 
     /* 3D positional estimation based on trigonometry of the ellipse/circle
