@@ -76,10 +76,10 @@ static const PSMoveTrackerSmoothingSettings tracker_smoothing_default_settings =
     .filter_do_2d_xy = 1,
     .filter_do_2d_r = 1,
     .filter_3d_type = Smoothing_None,
-    .acceleration_variance = 0.f,
-    .measurement_covariance = { 5.f, 0,   0,
-                                0,   5.f, 0,
-                                0,   0,  10.f}
+    .acceleration_variance = 10.f,
+    .measurement_covariance = { 0.01f, 0,   0,
+                                0,   0.01f, 0,
+                                0,   0,   1.f}
 };
 
 static const PSMoveTrackerSettings tracker_default_settings = {

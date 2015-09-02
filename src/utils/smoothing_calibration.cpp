@@ -41,6 +41,7 @@
 //-- constants -----
 #define STABILIZE_WAIT_TIME_MS 1000
 #define DESIRED_TRACKER_SAMPLE_COUNT 100
+#define GRAVITY_IN_CM_PER_SEC_PER_SEC 980.665f //cm/s^2
 
 enum eCalibrationState
 {
@@ -171,7 +172,7 @@ main(int arg, char** args)
 			LOG_MESSAGE("Measurement will start once the controller is aligned with gravity and stable.\n");
 
 			int stable_start_time = psmove_util_get_ticks();
-			PSMove_3AxisVector accelerometer_samples[DESIRED_TRACKER_SAMPLE_COUNT]; // in g/s^2
+			PSMove_3AxisVector accelerometer_samples[DESIRED_TRACKER_SAMPLE_COUNT]; // in cm/s^2
 			PSMove_3AxisVector position_samples[DESIRED_TRACKER_SAMPLE_COUNT]; // in cm
 			int sample_count = 0;
 
@@ -205,6 +206,10 @@ main(int arg, char** args)
 					&accelerometer_samples[sample_count].x, 
 					&accelerometer_samples[sample_count].y, 
 					&accelerometer_samples[sample_count].z);
+
+                // Convert from g to cm/S^2
+                accelerometer_samples[sample_count]=
+                    psmove_3axisvector_scale(&accelerometer_samples[sample_count], GRAVITY_IN_CM_PER_SEC_PER_SEC);
 
 				// Render the frame to a window
 				void *frame = psmove_tracker_get_frame(tracker);
