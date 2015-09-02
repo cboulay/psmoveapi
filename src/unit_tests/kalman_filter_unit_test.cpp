@@ -39,7 +39,7 @@
 
 //-- macros -----
 #ifdef UNIT_TEST_LOGGING
-#define LOG_MESSAGE(f_, ...) fprintf(stdout, (f_), __VA_ARGS__);
+#define LOG_MESSAGE(f_, ...) fprintf(stdout, (f_), ##__VA_ARGS__);
 #else
 #define LOG_MESSAGE(f_, ...)
 #endif
@@ -298,7 +298,12 @@ psmove_kalman_filter_test_sample_data()
 			}
 
 			SimTime += time_delta;
-            psmove_sleep((unsigned long)(time_delta * 1000.f));
+            unsigned long sleep_for = (unsigned long)(time_delta * 1000.f);
+            PSMove_timestamp before_sleep = psmove_timestamp();
+            psmove_sleep(sleep_for);
+            PSMove_timestamp after_sleep = psmove_timestamp();
+            float time_diff = (float)psmove_timestamp_value(psmove_timestamp_diff(after_sleep, before_sleep));
+            printf("psmove_sleep(%lu) lasted %f seconds.\n", sleep_for, time_diff);
 		}
 	}
 
