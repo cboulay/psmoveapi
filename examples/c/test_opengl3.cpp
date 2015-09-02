@@ -153,15 +153,20 @@ Tracker::Tracker()
     }
     
     m_count = psmove_count_connected();
-    m_tracker = psmove_tracker_new();
+    
+    PSMoveTrackerSettings settings;
+    psmove_tracker_settings_set_default(&settings);
+    settings.color_mapping_max_age = 0;
+    settings.exposure_mode = Exposure_LOW;
+    settings.camera_mirror = PSMove_True;
+    m_tracker = psmove_tracker_new_with_settings(&settings);
     if (m_tracker == NULL) {
         fprintf(stderr, "No tracker available! (Missing camera?)\n");
         exit(1);
     }
+    
     m_fusion = psmove_fusion_new(m_tracker, 1., 1000.);
     
-    psmove_tracker_set_mirror(m_tracker, PSMove_True);
-    psmove_tracker_set_exposure(m_tracker, Exposure_LOW);
     m_moves = (PSMove**)calloc(m_count, sizeof(PSMove*));
     for (int i=0; i<m_count; i++) {
         m_moves[i] = psmove_connect_by_id(i);

@@ -101,15 +101,27 @@ Tracker::Tracker()
     }
 
     m_count = psmove_count_connected();
-    m_tracker = psmove_tracker_new();
+
+    PSMoveTrackerSettings settings;
+    psmove_tracker_settings_set_default(&settings);
+    settings.color_mapping_max_age = 0;
+    settings.exposure_mode = Exposure_LOW;
+    settings.camera_mirror = PSMove_True;
+    settings.use_fitEllipse = 0;
+    m_tracker = psmove_tracker_new_with_settings(&settings);
     if (m_tracker == NULL) {
         fprintf(stderr, "No tracker available! (Missing camera?)\n");
         exit(1);
     }
-    m_fusion = psmove_fusion_new(m_tracker, 1., 1000.);
 
-    psmove_tracker_set_mirror(m_tracker, PSMove_True);
-	psmove_tracker_set_smoothing_type(m_tracker, Smoothing_Kalman);
+    PSMoveTrackerSmoothingSettings smoothing_settings;
+    psmove_tracker_get_smoothing_settings(m_tracker, &smoothing_settings);
+    smoothing_settings.filter_do_2d_r = 0;
+    smoothing_settings.filter_do_2d_xy = 0;
+    smoothing_settings.filter_3d_type = Smoothing_LowPass;
+    psmove_tracker_set_smoothing_settings(m_tracker, &smoothing_settings);
+    
+    m_fusion = psmove_fusion_new(m_tracker, 0.001, 500.);
 
     m_moves = (PSMove**)calloc(m_count, sizeof(PSMove*));
     m_items = (int*)calloc(m_count, sizeof(int));
@@ -140,16 +152,13 @@ void
 Tracker::update()
 {
     psmove_tracker_update_image(m_tracker);
-    //psmove_tracker_update(m_tracker, NULL);
-	psmove_tracker_update(m_tracker, NULL);
+    psmove_tracker_update(m_tracker, NULL);
 
     for (int i=0; i<m_count; i++) {
         while (psmove_poll(m_moves[i]));
 
         float x, y, z;
-        //psmove_fusion_get_position(m_fusion, m_moves[i],
-        //        &x, &y, &z);
-		psmove_fusion_get_location(m_fusion, m_moves[i],
+        psmove_fusion_get_position(m_fusion, m_moves[i],
                 &x, &y, &z);
 
         int buttons = psmove_get_buttons(m_moves[i]);
@@ -274,29 +283,39 @@ Tracker::render()
         glLoadMatrixf(psmove_fusion_get_modelview_matrix(m_fusion, m_moves[i]));
 
         if (m_items[i] == WIRE_CUBE) {
+            // Draw small box around controller position
             glColor3f(1., 0., 0.);
             drawWireCube(1.f);
 
 			// Draw OpenGL axes
 			glBegin(GL_LINES);
+            
+            // Draw line through controller X (select->start button)
 			glColor3f(1., 0., 0.);
 			glVertex3f(0.0, 0.0, 0.0); glVertex3f(2, 0, 0);
+
+            // Draw line through controller y (trigger->move button)
 			glColor3f(0., 1., 0.);
 			glVertex3f(0.0, 0.0, 0.0); glVertex3f(0, 2, 0);
+
+            // Draw line through controller z (sphere -> usb connector)
 			glColor3f(0., 0., 1.);
 			glVertex3f(0.0, 0.0, 0.0); glVertex3f(0, 0, 2);
+
 			glEnd();
 
+            // Draw handle
             glColor3f(0., 1., 0.);
-
             glPushMatrix();
-            glScalef(1., 1., 4.5);
+            glScalef(5., 5., 20.0);
             glTranslatef(0., 0., .5);
             drawWireCube(1.);
             glPopMatrix();
 
+            // Draw sphere
             glColor3f(0., 0., 1.);
-            drawWireCube(3.f);
+            drawWireCube(9.f);
+
         } else if (m_items[i] == SOLID_CUBE) {
             glEnable(GL_LIGHTING);
             drawSolidCube(2.f);
