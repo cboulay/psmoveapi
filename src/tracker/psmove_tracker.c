@@ -1781,7 +1781,16 @@ psmove_tracker_update_controller_position_from_contour(PSMoveTracker *tracker, T
     tc->old_y = tc->y;
     tc->old_r = tc->r;
 
-    float a;  // Half the long-axis for the ellipse, or the radius for circle fitting.
+    // See https://github.com/cboulay/psmove-ue4/wiki/Tracker-Algorithm
+    float f_px = tracker->cc->focl_x;
+    float x_px, y_px;       // Position of sphere/ellipse on sensor
+    float x_cm, y_cm, z_cm; // Final position
+    float k;                // L_px / f_px, common to both and carries through.
+
+    float L_px;             // hypotenuse of the triangle from image center to
+                            //sphere center on the camera image
+                            //(small light gray triangle on the x-y plane)
+
     if (tracker->settings.use_fitEllipse)
     {
         // Fit an ellipse to our contour
@@ -1799,8 +1808,61 @@ psmove_tracker_update_controller_position_from_contour(PSMoveTracker *tracker, T
         tc->r = ellipse.size.height / 2; // aka el_minor.
         tc->el_major = ellipse.size.width / 2;
         tc->el_angle = ellipse.angle;
-
-        a = ellipse.size.width / 2;
+        
+        // Copy pixel positions for easier access.
+        x_px = tc->x - tracker->frame->width / 2;  // x-origin from left to middle.
+        y_px = tracker->frame->height / 2 - tc->y; // y-origin from top to middle, with +y up
+        float a_px = tc->el_major;
+        
+        L_px = sqrt(x_px*x_px + y_px*y_px);
+        
+        // The green triangle goes from the camera pinhole (at origin)
+        // to 0,0,f_px (centerpoint on focal plane),
+        // to the center of the sphere on the focal plane (x_px, y_px, f_px)
+        // The orange triangle extends the green triangle to go from pinhole,
+        // to the middle of the sensor image, to the far edge of the ellipse (i.e. L_px + a_px)
+        
+        // Theta, the angle in the green triangle from the pinhole
+        // to the center of the sphere on the image, off the focal axis:
+        // theta = atan(k), where
+        k = L_px / f_px;
+        
+        // theta + alpha, the angle in the green+orange triangle
+        // from the pinhole to the far edge of the ellipse, off the focal axis:
+        // theta + alpha = atan( j ), where
+        float j = (L_px + a_px) / f_px;
+        
+        // Re-arranging for alpha:
+        // alpha = atan(j) - atan(k);
+        // Difference of atans (See 5.2.9 here:
+        // http://www.mathamazement.com/Lessons/Pre-Calculus/05_Analytic-Trigonometry/sum-and-difference-formulas.html )
+        // atan(j) - atan(k) = atan(l), where
+        float l = (j - k) / (1 + j*k);
+        
+        // Thus, alpha = atan(l)
+        
+        // The red+purple+orange triangle goes from camera pinhole,
+        // to the edge of the sphere, to the center of the sphere.
+        // sin(alpha) = R_cm / D_cm;
+        // sin(atan(l)) = R_cm / D_cm;
+        // sin of arctan (http://www.rapidtables.com/math/trigonometry/arctan/sin-of-arctan.htm )
+        // sin(atan(l)) = l / sqrt( 1 + l*l )
+        // R_cm / D_cm = l / sqrt( 1 + l*l )
+        // Solve for D:
+        float D_cm = SPHERE_RADIUS_CM * sqrt(1 + l*l) / l;
+        
+        // We can now use another pair of similar (nested) triangles.
+        // The outer triangle (blue+purple+orange) has base L_cm, side Z_cm, and hypotenuse D_cm.
+        // The inner triangle (blue + some orange) has base L_px, size f_px, and hypotenuse D_px.
+        // From the larger triangle, we get sin(gamma) = Z_cm / D_cm;
+        // From the smaller triangle, we get tan(gamma) = f_px / L_px,
+        // or gamma = atan( f_px / L_px );
+        // then sin(gamma) = sin( atan( f_px / L_px ) ) = Z_cm / D_cm;
+        // Again, using the sin-of-arctan identity
+        // sin( atan( f_px / L_px ) ) = fl / sqrt( 1 + fl*fl ) = Z_cm / D_cm, where
+        float fl = f_px / L_px; // used several times.
+        // Solve for Z_cm
+        z_cm = D_cm * fl / sqrt( 1 + fl*fl);
     }
     else 
     {
@@ -1808,39 +1870,30 @@ psmove_tracker_update_controller_position_from_contour(PSMoveTracker *tracker, T
         psmove_tracker_estimate_circle_from_contour(contourBest, &tc->x, &tc->y, &tc->r);
         tc->x += tc->roi_x;
         tc->y += tc->roi_y;
-        a = tc->r;
         
-        //TODO: Use THP method to get z, then calculate x and y from that.
-        /*
-        float z = psmove_tracker_distance_from_radius(tracker, &(tc->r));
-        zcm = psmove_tracker_distance_from_radius(tracker, tc->r);
-        float xi_sq = x_i*x_i;
-        float yi_sq = y_i*y_i;
-        float xcm = sqrt( ((zcm * zcm) / (f_0 * f_0)) * (xi_sq + yi_sq) / (1 + (yi_sq / xi_sq)) );
-        float ycm = xcm * y_i / x_i;
-        */
+        x_px = tc->x - tracker->frame->width / 2;  // x-origin from left to middle.
+        y_px = tracker->frame->height / 2 - tc->y; // y-origin from top to middle, with +y up
+        
+        L_px = sqrt(x_px*x_px + y_px*y_px);
+        k = L_px / f_px;
+        
+        //Use THP parameterized curve fit method to get z_cm from radius
+        z_cm = psmove_tracker_distance_from_radius(tracker, tc->r);
+        
     }
-
-    /* 3D positional estimation based on trigonometry of the ellipse/circle
-    * See: https://github.com/cboulay/psmove-ue4/wiki/Tracker-Algorithm
-    */
-    float f_0 = tracker->cc->focl_x;
-    float x_i = tc->x - tracker->frame->width / 2;  // x-origin from left to middle.
-    float y_i = tracker->frame->height / 2 - tc->y; // y-origin from top to middle, with +y up
-
-    // Calculations
-    float L_i = sqrt(x_i*x_i + y_i*y_i);
-    float j = (L_i + a) / f_0;
-    float k = L_i / f_0;
-    float l = (j - k) / (1 + j*k);
-    float D_0 = SPHERE_RADIUS_CM * sqrt(1 + l*l) / l;
-    float fl = f_0 / L_i; // used several times.
-    float z = D_0 * fl / sqrt(1 + fl*fl);
-    float L = sqrt(D_0*D_0 - z*z);
-    float x = L*x_i / L_i;
-    float y = L*y_i / L_i;
-
-    tc->position_cm = psmove_3axisvector_xyz(x, y, z);
+    
+    // Use a pair of similar triangles to find L_cm
+    // 1: blue + purple + orange; tan(beta) = z_cm / L_cm
+    // 2: inner blue + some orange; tan(beta) = f_px / L_px
+    // Solve for L_cm
+    float L_cm = z_cm * k;
+    //float L_cm = sqrt(D_cm*D_cm - z_cm*z_cm);
+    
+    // We can now use the pair of gray triangles on the x-y plane to find x_cm and y_cm
+    x_cm = L_cm * x_px / L_px;
+    y_cm = L_cm * y_px / L_px;
+    
+    tc->position_cm = psmove_3axisvector_xyz(x_cm, y_cm, z_cm);
 }
 
 void
