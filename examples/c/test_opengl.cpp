@@ -107,7 +107,7 @@ Tracker::Tracker()
     settings.color_mapping_max_age = 0;
     settings.exposure_mode = Exposure_LOW;
     settings.camera_mirror = PSMove_True;
-    settings.use_fitEllipse = 0;
+    settings.use_fitEllipse = 1;
     m_tracker = psmove_tracker_new_with_settings(&settings);
     if (m_tracker == NULL) {
         fprintf(stderr, "No tracker available! (Missing camera?)\n");
@@ -307,14 +307,14 @@ Tracker::render()
             // Draw handle
             glColor3f(0., 1., 0.);
             glPushMatrix();
-            glScalef(5., 5., 20.0);
-            glTranslatef(0., 0., .5);
+            glScalef(3., 3., 15.);
+            glTranslatef(0., 0., .65);
             drawWireCube(1.);
             glPopMatrix();
 
             // Draw sphere
             glColor3f(0., 0., 1.);
-            drawWireCube(9.f);
+            drawWireCube(5.f);
 
         } else if (m_items[i] == SOLID_CUBE) {
             glEnable(GL_LIGHTING);

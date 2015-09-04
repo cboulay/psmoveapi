@@ -345,13 +345,13 @@ Tracker::render()
             glColor3f(0., 1., 0.);
 
             glPushMatrix();
-            glScalef(1., 1., 4.5);
-            glTranslatef(0., 0., .5);
+            glScalef(3., 3., 15.);
+            glTranslatef(0., 0., .65);
             drawWireCube(1.);
             glPopMatrix();
 
             glColor3f(0., 0., 1.);
-            drawWireCube(3.f);
+            drawWireCube(5.f);
         } else if (m_items[i] == SOLID_CUBE) {
             glEnable(GL_LIGHTING);
             float diffuse[] = {.5, 0., 0., 1.};
