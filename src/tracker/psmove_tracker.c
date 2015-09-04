@@ -92,6 +92,7 @@ static const PSMoveTrackerSettings tracker_default_settings = {
     .camera_exposure = (255 * 15) / 0xFFFF,
     .camera_brightness = 0,
     .camera_mirror = PSMove_True,
+    .camera_type = PSMove_Camera_PS3EYE_BLUEDOT,
     .exposure_mode = Exposure_LOW,
     .calibration_blink_delay = 200,
     .calibration_diff_t = 20,
@@ -579,6 +580,22 @@ psmove_tracker_get_exposure(PSMoveTracker *tracker)
 }
 
 void
+psmove_tracker_set_focal_length(PSMoveTracker *tracker, float focal_length)
+{
+    tracker->cc->focl_x = focal_length;
+    tracker->cc->focl_y = focal_length;
+}
+
+
+int
+psmove_tracker_get_focal_length(PSMoveTracker *tracker, float* focal_length_out)
+{
+    int success = 1;
+    *focal_length_out = tracker->cc->focl_x;
+    return success;
+}
+
+void
 psmove_tracker_set_smoothing_settings(PSMoveTracker *tracker, PSMoveTrackerSmoothingSettings *smoothing_settings)
 {
     psmove_return_if_fail(tracker != NULL);
@@ -822,7 +839,10 @@ psmove_tracker_new_with_camera_and_settings(int camera, PSMoveTrackerSettings *s
     // Returns NULL if no control found.
     // e.g. PS3EYE set during compile but not plugged in.
     tracker->cc = camera_control_new_with_settings(camera,
-        tracker->settings.camera_frame_width, tracker->settings.camera_frame_height, tracker->settings.camera_frame_rate);
+                                                   tracker->settings.camera_frame_width,
+                                                   tracker->settings.camera_frame_height,
+                                                   tracker->settings.camera_frame_rate,
+                                                   tracker->settings.camera_type);
     if (!tracker->cc)
     {
         free(tracker);
@@ -1786,10 +1806,9 @@ psmove_tracker_update_controller_position_from_contour(PSMoveTracker *tracker, T
     float x_px, y_px;       // Position of sphere/ellipse on sensor
     float x_cm, y_cm, z_cm; // Final position
     float k;                // L_px / f_px, common to both and carries through.
-
     float L_px;             // hypotenuse of the triangle from image center to
-                            //sphere center on the camera image
-                            //(small light gray triangle on the x-y plane)
+                            // sphere center on the camera image
+                            // (small light gray triangle on the x-y plane)
 
     if (tracker->settings.use_fitEllipse)
     {

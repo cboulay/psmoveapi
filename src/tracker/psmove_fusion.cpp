@@ -46,6 +46,7 @@
 
 #define PSMOVE_FUSION_STEP_EPSILON (.0001)
 #define TRANSFORM_FILE "transform.csv"
+#define PI 3.14159265
 
 struct _PSMoveFusion {
     PSMoveTracker *tracker;
@@ -145,19 +146,29 @@ psmove_fusion_new(PSMoveTracker *tracker, float z_near, float z_far)
 
     int width, height;
     psmove_tracker_get_size(tracker, &width, &height);
-
     fusion->width = (float)width;
     fusion->height = (float)height;
-
-    //TODO: Set projection and cameraview depending on psmove_tracker_get_mirror(fusion->tracker)
-    //This needs glm 0.9.7 and deciding between glm::perspectiveFovRH and LH
-    fusion->projection = glm::perspectiveFov<float>((float)PSEYE_FOV_BLUE_DOT,
-            fusion->width, fusion->height, z_near, z_far);
+    
+    float fl;  // Focal length of camera in pixels.
+    psmove_tracker_get_focal_length(tracker, &fl);
+    
+    // Calculate the vertical FOV
+    // tan(theta) = l / F, where l is height/2, F is the focal length, and theta is v_fov/2
+    float v_fov = 2 * atanf( (float(fusion->height)/2.f) / fl);
+    v_fov *= 180.0 / PI;
+    
+    fusion->projection = glm::perspectiveFov<float>(v_fov,
+                                                    fusion->width,
+                                                    fusion->height,
+                                                    z_near, z_far);
     
     fusion->cameraview = glm::lookAt(
         glm::vec3(0, 0, 0),     // Camera is at origin. TODO: -tracker->settings.zorigin_cm
         glm::vec3(0, 0, 1),     // Camera is looking back at you
         glm::vec3(0, 1, 0));    // Up is up.
+    
+    //TODO: Set projection and cameraview depending on psmove_tracker_get_mirror(fusion->tracker)
+    //This needs glm 0.9.7 and deciding between glm::perspectiveFovRH and LH
 
     fusion->physical_xf = glm::mat4(1.0f);   // Identity matrix.
     psmove_fusion_load_physical_xf(fusion);  // Load transform from file if it exists.

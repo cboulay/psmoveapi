@@ -44,7 +44,7 @@ ADDAPI CameraControl *
 ADDCALL camera_control_new(int cameraID);
 
 ADDAPI CameraControl *
-ADDCALL camera_control_new_with_settings(int cameraID, int width, int height, int framerate);
+ADDCALL camera_control_new_with_settings(int cameraID, int width, int height, int framerate, int cam_type);
 
 ADDAPI void
 ADDCALL camera_control_read_calibration(CameraControl* cc,

@@ -38,12 +38,6 @@
 extern "C" {
 #endif
 
-
-/* Field of view of the PS Eye */
-#define PSEYE_FOV_BLUE_DOT 75
-#define PSEYE_FOV_RED_DOT 56
-
-
 /* This struct is used by the SWIG bindings as result value */
 typedef struct {
     float m[16];

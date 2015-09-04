@@ -40,8 +40,8 @@
 
 #include "camera_control_private.h"
 
-#define DEFAULT_FOCAL_LENGTH 535
-#define PS3EYE_FRAMERATE 75
+#define PS3EYE_FOCAL_LENGTH_BLUE 554.2563
+#define PS3EYE_FOCAL_LENGTH_RED 776.3782
 
 #if defined(CAMERA_CONTROL_USE_PS3EYE_DRIVER)
 
@@ -120,11 +120,11 @@ get_metrics(int *width, int *height)
 CameraControl *
 camera_control_new(int cameraID)
 {
-    return camera_control_new_with_settings(cameraID, 0, 0, 0);
+    return camera_control_new_with_settings(cameraID, 0, 0, 0, 2);
 }
 
 CameraControl *
-camera_control_new_with_settings(int cameraID, int width, int height, int framerate)
+camera_control_new_with_settings(int cameraID, int width, int height, int framerate, int cam_type)
 {
 	CameraControl* cc = (CameraControl*) calloc(1, sizeof(CameraControl));
 	cc->cameraID = cameraID;
@@ -132,10 +132,26 @@ camera_control_new_with_settings(int cameraID, int width, int height, int framer
     if (framerate <= 0) {
         framerate = PSMOVE_TRACKER_DEFAULT_FPS;
     }
+    
+    if (cam_type == PSMove_Camera_PS3EYE_BLUEDOT)
+    {
+        cc->focl_x = (float)PS3EYE_FOCAL_LENGTH_BLUE;
+        cc->focl_y = (float)PS3EYE_FOCAL_LENGTH_BLUE;
+    }
+    else if (cam_type == PSMove_Camera_PS3EYE_REDDOT)
+    {
+        cc->focl_x = (float)PS3EYE_FOCAL_LENGTH_RED;
+        cc->focl_y = (float)PS3EYE_FOCAL_LENGTH_RED;
+        
+    }
+    else if (cam_type == PSMove_Camera_Unknown)
+    {
+        cc->focl_x = (float)PS3EYE_FOCAL_LENGTH_BLUE;
+        cc->focl_y = (float)PS3EYE_FOCAL_LENGTH_BLUE;
+    }
 
     // Needed for cbb tracker. Will be overwritten by camera calibration files if they exist.
-    cc->focl_x = DEFAULT_FOCAL_LENGTH;
-    cc->focl_y = DEFAULT_FOCAL_LENGTH;
+    
 
 #if defined(CAMERA_CONTROL_USE_CL_DRIVER)
     // Windows 32-bit. Either CL_SDK or Registry_requiring
@@ -260,8 +276,6 @@ camera_control_reset_calibration(CameraControl* cc)
     if (cc->mapy) {
         cvReleaseImage(&cc->mapy);
     }
-    cc->focl_x = DEFAULT_FOCAL_LENGTH;
-    cc->focl_y = DEFAULT_FOCAL_LENGTH;
 }
 
 IplImage *
