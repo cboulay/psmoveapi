@@ -226,14 +226,11 @@ void
 psmove_fusion_get_position(PSMoveFusion *fusion, PSMove *move,
 float *x, float *y, float *z)
 {
-    psmove_return_if_fail(fusion != NULL);
-    psmove_return_if_fail(move != NULL);
-
-    if (x != NULL && y != NULL && z != NULL)
-    {
-        psmove_tracker_get_location(fusion->tracker, move, x, y, z);
-    }
+    psmove_fusion_get_location(fusion, move, x, y, z);
     
+    //psmove_return_if_fail(fusion != NULL);
+    //psmove_return_if_fail(move != NULL);
+
     //float camX, camY, camR;
     //psmove_tracker_get_position(fusion->tracker, move, &camX, &camY, &camR);
 
@@ -295,8 +292,11 @@ psmove_fusion_get_location(PSMoveFusion *fusion, PSMove *move,
 {
     psmove_return_if_fail(fusion != NULL);
     psmove_return_if_fail(move != NULL);
-
-    psmove_tracker_get_location(fusion->tracker, move, x, y, z);
+    
+    if (x != NULL && y != NULL && z != NULL)
+    {
+        psmove_tracker_get_location(fusion->tracker, move, x, y, z);
+    }
 }
 
 void
