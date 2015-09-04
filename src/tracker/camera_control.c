@@ -40,8 +40,8 @@
 
 #include "camera_control_private.h"
 
-#define PS3EYE_FOCAL_LENGTH_BLUE 554.2563
-#define PS3EYE_FOCAL_LENGTH_RED 776.3782
+#define PS3EYE_FOCAL_LENGTH_BLUE 554.2563  // Corresponds to 75 deg diagonal FOV
+#define PS3EYE_FOCAL_LENGTH_RED 776.3782   // Corresponds to 56 deg diagonal FOV
 
 #if defined(CAMERA_CONTROL_USE_PS3EYE_DRIVER)
 
