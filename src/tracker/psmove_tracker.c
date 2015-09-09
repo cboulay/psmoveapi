@@ -2001,7 +2001,11 @@ psmove_tracker_filter_3d(PSMoveTracker *tracker, TrackedController *tc)
         // Re-initialize the positional filter if:
         // * It has been too long since the last update
         // * The position wasn't tracked the previous update
-        bool reinitialize_filter = seconds_since_position_update > POSITION_FILTER_RESET_TIME || !tc->was_tracked;
+        // * The position filter hasn't been initialized
+        bool reinitialize_filter = 
+            seconds_since_position_update > POSITION_FILTER_RESET_TIME || 
+            !tc->was_tracked ||
+            tc->position_filter == NULL;
 
         switch (tracker->smoothing_type)
         {
@@ -2014,6 +2018,11 @@ psmove_tracker_filter_3d(PSMoveTracker *tracker, TrackedController *tc)
         {
             if (reinitialize_filter)
             {
+                if (tc->position_filter == NULL)
+                {
+                    tc->position_filter= psmove_position_lowpass_filter_new();
+                }
+
                 psmove_position_lowpass_filter_init(
                     &measured_position, (PSMovePositionLowPassFilter *)tc->position_filter);
             }
@@ -2033,8 +2042,15 @@ psmove_tracker_filter_3d(PSMoveTracker *tracker, TrackedController *tc)
         {
             if (reinitialize_filter)
             {
-                psmove_position_lowpass_filter_init(
-                    &measured_position, (PSMovePositionLowPassFilter *)tc->position_filter);
+                if (tc->position_filter == NULL)
+                {
+                    tc->position_filter= psmove_position_kalman_filter_new();
+                }
+
+                psmove_position_kalman_filter_init(
+                    &tracker->smoothing_settings,
+                    &measured_position, 
+                    (PSMovePositionLowPassFilter *)tc->position_filter);
             }
             else
             {

@@ -108,13 +108,15 @@ print_mat4(glm::mat4 in)
 }
 
 void
-psmove_fusion_update_transform(PSMoveFusion *fusion, float *pos_xyz, float *quat_wxyz)
+psmove_fusion_update_transform(PSMoveFusion *fusion, float *pos_xyz, float *quat_wxyz, float *scale_xyz)
 {
     glm::vec3 position(pos_xyz[0], pos_xyz[1], pos_xyz[2]);
     glm::quat quaternion(quat_wxyz[0], quat_wxyz[1], quat_wxyz[2], quat_wxyz[3]);
+    glm::vec3 scale(scale_xyz[0], scale_xyz[1], scale_xyz[2]);
     glm::mat4 quatmat = glm::mat4_cast(quaternion);
     glm::mat4 posmat = glm::translate(glm::mat4(), position);
-    fusion->total_xf = posmat * quatmat * fusion->physical_xf;
+    glm::mat4 scalemat = glm::scale(glm::mat4(), scale);
+    fusion->total_xf = posmat * quatmat * scalemat * fusion->physical_xf;
     /*
     printf("fusion->total_xf = posmat * quatmat * fusion->physical_xf;\n");
     printf("posmat:\n");
