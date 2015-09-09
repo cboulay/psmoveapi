@@ -44,6 +44,13 @@ if(PSMOVE_BUILD_EXAMPLES)
             add_executable(${EXAMPLE} ${CMAKE_CURRENT_LIST_DIR}/c/${EXAMPLE}.c)
             target_link_libraries(${EXAMPLE} psmoveapi psmoveapi_tracker)
         endforeach()
+        
+        FIND_PACKAGE(OCULUS_SDK)
+        IF(OCULUS_SDK_FOUND)
+            add_executable(coregister_dk2 ${CMAKE_CURRENT_LIST_DIR}/c/coregister_dk2.cpp)
+            include_directories(${OCULUS_SDK_INCLUDE_DIRS})
+            target_link_libraries(coregister_dk2 psmoveapi psmoveapi_tracker ${OCULUS_SDK_LIBRARIES})
+        ENDIF(OCULUS_SDK_FOUND)
     endif()
 endif()
 
