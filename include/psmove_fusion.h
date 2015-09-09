@@ -59,9 +59,11 @@ typedef struct _PSMoveFusion PSMoveFusion; /*!< Handle to a PS Move Fusion objec
 *                   additional transform translation
 * \param quat_wxyz  A pointer to a float[4] array representing the
 *                   additional transform quaternion
+* \param scale_xyz  A pointer to a float[3] array representing the
+*                   additional transform scale
 **/
 ADDAPI void
-ADDCALL psmove_fusion_update_transform(PSMoveFusion *fusion, float *pos_xyz, float *quat_wxyz);
+ADDCALL psmove_fusion_update_transform(PSMoveFusion *fusion, float *pos_xyz, float *quat_wxyz, float *scale_xyz);
 
 /**
 * \brief Resets both physical_xf and total_xf to identity matrix.
