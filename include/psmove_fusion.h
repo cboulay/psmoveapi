@@ -66,6 +66,18 @@ ADDAPI void
 ADDCALL psmove_fusion_update_transform(PSMoveFusion *fusion, float *pos_xyz, float *quat_wxyz, float *scale_xyz);
 
 /**
+* \brief Combines provided transform with physical_xf for total_xf
+*
+* Creates and returns a new \ref PSMoveFusion object.
+*
+* \param fusion     A valid \ref PSMoveFusion handle
+* \param mat44      A pointer to a float[16] array representing the
+*                   additional transform
+**/
+ADDAPI void
+ADDCALL psmove_fusion_update_transform_mat44(PSMoveFusion *fusion, float *mat44);
+
+/**
 * \brief Resets both physical_xf and total_xf to identity matrix.
 *
 * \param fusion     A valid \ref PSMoveFusion handle
