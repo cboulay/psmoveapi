@@ -133,6 +133,14 @@ psmove_fusion_update_transform(PSMoveFusion *fusion, float *pos_xyz, float *quat
 }
 
 void
+psmove_fusion_update_transform_mat44(PSMoveFusion *fusion, float *mat44)
+{
+    glm::mat4 fusion_xf= glm::make_mat4(mat44);
+
+    fusion->total_xf = fusion_xf * fusion->physical_xf;
+}
+
+void
 psmove_fusion_reset_transform(PSMoveFusion *fusion)
 {
     fusion->physical_xf = glm::mat4(1.0f);   // Identity matrix.
