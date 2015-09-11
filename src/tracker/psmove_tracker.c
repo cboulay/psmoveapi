@@ -164,7 +164,7 @@ struct _TrackedController {
     float rs;					// a smoothed variant of the radius
 
     // For positional tracker
-	void *position_filter;
+    void *position_filter;
     PSMove_3AxisVector position_cm;     // x/y/z coordinates of sphere in cm from camera focal point
     PSMove_3AxisVector position_offset; // x/y/z offsets. Can be used to define origin in camera-space.
     float el_major, el_angle;           // For the found ellipse. Used for annotation only.
@@ -172,8 +172,8 @@ struct _TrackedController {
     float q1, q2, q3;   // Calculated quality criteria from the tracker
     bool quality_check; // If q1, q2, q3 all pass.
 
-	bool was_tracked;				// tracked previous frame
-	bool is_tracked;				// tracked this frame
+    bool was_tracked;				// tracked previous frame
+    bool is_tracked;				// tracked this frame
     PSMove_timestamp last_color_update;	// the timestamp when the last color adaption has been performed
     PSMove_timestamp last_position_update; // the timestamp when the last position update has been performed
     enum PSMove_Bool auto_update_leds;
@@ -228,11 +228,11 @@ struct _PSMoveTracker {
     CameraControl* cc;
 
     PSMoveTrackerSettings settings;  // Camera and tracker algorithm settings. Generally do not change after startup & calibration.
-	// The type of position smoothing to use
-	enum PSMoveTracker_Smoothing_Type smoothing_type;
+    // The type of position smoothing to use
+    enum PSMoveTracker_Smoothing_Type smoothing_type;
 
     // Settings used by the positional smoothing algorithms
-	PSMoveTrackerSmoothingSettings smoothing_settings;
+    PSMoveTrackerSmoothingSettings smoothing_settings;
 
     /* Timestamps for performance measurements */
     PSMove_timestamp ts_camera_begin; // when the capture was started
@@ -622,54 +622,54 @@ psmove_tracker_save_smoothing_settings(PSMoveTrackerSmoothingSettings *smoothing
     psmove_return_val_if_fail(smoothing_settings != NULL, PSMove_False);
     char *filepath = psmove_util_get_file_path(SMOOTHING_SETTINGS_CSV);
 
-	FILE *fp= psmove_file_open(filepath, "w");
+    FILE *fp= psmove_file_open(filepath, "w");
     free(filepath);
-	psmove_return_val_if_fail(fp != NULL, PSMove_False);
+    psmove_return_val_if_fail(fp != NULL, PSMove_False);
 
     fprintf(fp, "name,value\n");
     fprintf(fp, "filter_do_2d_xy,%d\n", smoothing_settings->filter_do_2d_xy);
     fprintf(fp, "filter_do_2d_r,%d\n", smoothing_settings->filter_do_2d_r);
     fprintf(fp, "filter_3d_type,%d\n", smoothing_settings->filter_3d_type);
-	fprintf(fp, "acceleration_variance,%f\n", smoothing_settings->acceleration_variance);
-	fprintf(fp, "measurement_covariance_00,%f\n", smoothing_settings->measurement_covariance.row0[0]);
-	fprintf(fp, "measurement_covariance_11,%f\n", smoothing_settings->measurement_covariance.row1[1]);
-	fprintf(fp, "measurement_covariance_22,%f\n", smoothing_settings->measurement_covariance.row2[2]);
+    fprintf(fp, "acceleration_variance,%f\n", smoothing_settings->acceleration_variance);
+    fprintf(fp, "measurement_covariance_00,%f\n", smoothing_settings->measurement_covariance.row0[0]);
+    fprintf(fp, "measurement_covariance_11,%f\n", smoothing_settings->measurement_covariance.row1[1]);
+    fprintf(fp, "measurement_covariance_22,%f\n", smoothing_settings->measurement_covariance.row2[2]);
 
     psmove_file_close(fp);
-	return PSMove_True;
+    return PSMove_True;
 }
 
 enum PSMove_Bool
 psmove_tracker_load_smoothing_settings(PSMoveTrackerSmoothingSettings *out_smoothing_settings)
 {
-	PSMoveTrackerSmoothingSettings smoothing_settings;
-	enum PSMove_Bool success = PSMove_False;
-	int result = 0;
+    PSMoveTrackerSmoothingSettings smoothing_settings;
+    enum PSMove_Bool success = PSMove_False;
+    int result = 0;
 
-	psmove_tracker_smoothing_settings_set_default(&smoothing_settings);
+    psmove_tracker_smoothing_settings_set_default(&smoothing_settings);
 
-	psmove_return_val_if_fail(out_smoothing_settings != NULL, PSMove_False);
+    psmove_return_val_if_fail(out_smoothing_settings != NULL, PSMove_False);
 
-	char *filepath = psmove_util_get_file_path(SMOOTHING_SETTINGS_CSV);
+    char *filepath = psmove_util_get_file_path(SMOOTHING_SETTINGS_CSV);
 
-	FILE *fp = psmove_file_open(filepath, "r");
+    FILE *fp = psmove_file_open(filepath, "r");
     free(filepath);
-	psmove_return_val_if_fail(fp != NULL, PSMove_False);
+    psmove_return_val_if_fail(fp != NULL, PSMove_False);
 
-	char s_name[64], s_value[64];
-	result = fscanf(fp, "%4s,%5s\n", s_name, s_value);
-	psmove_goto_if_fail(result == 2, finish);
-	psmove_goto_if_fail(strcmp(s_name, "name") == 0, finish);
-	psmove_goto_if_fail(strcmp(s_value, "value") == 0, finish);
+    char s_name[64], s_value[64];
+    result = fscanf(fp, "%4s,%5s\n", s_name, s_value);
+    psmove_goto_if_fail(result == 2, finish);
+    psmove_goto_if_fail(strcmp(s_name, "name") == 0, finish);
+    psmove_goto_if_fail(strcmp(s_value, "value") == 0, finish);
 
     char s_filter_do_2d_xy[64];
     result = fscanf(fp, "%15s,%d\n", &s_filter_do_2d_xy, &smoothing_settings.filter_do_2d_xy);
-	psmove_goto_if_fail(result == 2, finish);
+    psmove_goto_if_fail(result == 2, finish);
     psmove_goto_if_fail(strcmp(s_filter_do_2d_xy, "filter_do_2d_xy") == 0, finish);
 
     char s_filter_do_2d_r[64];
     result = fscanf(fp, "%14s,%d\n", &s_filter_do_2d_r, &smoothing_settings.filter_do_2d_r);
-	psmove_goto_if_fail(result == 2, finish);
+    psmove_goto_if_fail(result == 2, finish);
     psmove_goto_if_fail(strcmp(s_filter_do_2d_r, "filter_do_2d_r") == 0, finish);
 
     char s_filter_3d_type[64];
@@ -677,91 +677,91 @@ psmove_tracker_load_smoothing_settings(PSMoveTrackerSmoothingSettings *out_smoot
     psmove_goto_if_fail(result == 2, finish);
     psmove_goto_if_fail(strcmp(s_filter_3d_type, "filter_3d_type") == 0, finish);
 
-	char s_acceleration_variance[64];
-	result = fscanf(fp, "%21s,%f\n", &s_acceleration_variance, &smoothing_settings.acceleration_variance);
-	psmove_goto_if_fail(result == 2, finish);
-	psmove_goto_if_fail(strcmp(s_acceleration_variance, "acceleration_variance") == 0, finish);
+    char s_acceleration_variance[64];
+    result = fscanf(fp, "%21s,%f\n", &s_acceleration_variance, &smoothing_settings.acceleration_variance);
+    psmove_goto_if_fail(result == 2, finish);
+    psmove_goto_if_fail(strcmp(s_acceleration_variance, "acceleration_variance") == 0, finish);
 
-	char s_measurement_covariance_00[64];
-	result = fscanf(fp, "%25s,%f\n", &s_measurement_covariance_00, &smoothing_settings.measurement_covariance.row0[0]);
-	psmove_goto_if_fail(result == 2, finish);
-	psmove_goto_if_fail(strcmp(s_measurement_covariance_00, "measurement_covariance_00") == 0, finish);
+    char s_measurement_covariance_00[64];
+    result = fscanf(fp, "%25s,%f\n", &s_measurement_covariance_00, &smoothing_settings.measurement_covariance.row0[0]);
+    psmove_goto_if_fail(result == 2, finish);
+    psmove_goto_if_fail(strcmp(s_measurement_covariance_00, "measurement_covariance_00") == 0, finish);
 
-	char s_measurement_covariance_11[64];
-	result = fscanf(fp, "%25s,%f\n", &s_measurement_covariance_11, &smoothing_settings.measurement_covariance.row1[1]);
-	psmove_goto_if_fail(result == 2, finish);
-	psmove_goto_if_fail(strcmp(s_measurement_covariance_11, "measurement_covariance_11") == 0, finish);
+    char s_measurement_covariance_11[64];
+    result = fscanf(fp, "%25s,%f\n", &s_measurement_covariance_11, &smoothing_settings.measurement_covariance.row1[1]);
+    psmove_goto_if_fail(result == 2, finish);
+    psmove_goto_if_fail(strcmp(s_measurement_covariance_11, "measurement_covariance_11") == 0, finish);
 
-	char s_measurement_covariance_22[64];
-	result = fscanf(fp, "%25s,%f\n", &s_measurement_covariance_22, &smoothing_settings.measurement_covariance.row2[2]);
-	psmove_goto_if_fail(result == 2, finish);
-	psmove_goto_if_fail(strcmp(s_measurement_covariance_22, "measurement_covariance_22") == 0, finish);
+    char s_measurement_covariance_22[64];
+    result = fscanf(fp, "%25s,%f\n", &s_measurement_covariance_22, &smoothing_settings.measurement_covariance.row2[2]);
+    psmove_goto_if_fail(result == 2, finish);
+    psmove_goto_if_fail(strcmp(s_measurement_covariance_22, "measurement_covariance_22") == 0, finish);
 
-	success = PSMove_True;
+    success = PSMove_True;
 
 finish:
-	if (success == PSMove_True)
-	{
-		*out_smoothing_settings = smoothing_settings;
-	}
+    if (success == PSMove_True)
+    {
+        *out_smoothing_settings = smoothing_settings;
+    }
 
     psmove_file_close(fp);
-	return success;
+    return success;
 }
 
 void
 psmove_tracker_set_smoothing_type(PSMoveTracker *tracker, enum PSMoveTracker_Smoothing_Type smoothing_type)
 {
-	psmove_return_if_fail(tracker != NULL);
+    psmove_return_if_fail(tracker != NULL);
 
-	if (smoothing_type != tracker->smoothing_type)
-	{
+    if (smoothing_type != tracker->smoothing_type)
+    {
 
-		int controller_index;
-		for (controller_index = 0; controller_index < PSMOVE_TRACKER_MAX_CONTROLLERS; ++controller_index)
-		{
-			TrackedController *controller= &tracker->controllers[controller_index];
+        int controller_index;
+        for (controller_index = 0; controller_index < PSMOVE_TRACKER_MAX_CONTROLLERS; ++controller_index)
+        {
+            TrackedController *controller= &tracker->controllers[controller_index];
 
-			// Free the old filter, if any
-			if (controller->position_filter != NULL)
-			{
-				switch (tracker->smoothing_type)
-				{
-				case Smoothing_None:
-					// Nothing to clean up 
-					break;
-				case Smoothing_LowPass:
-					psmove_position_lowpass_filter_free((PSMovePositionLowPassFilter *)controller->position_filter);
-					break;
-				case Smoothing_Kalman:
-					psmove_position_kalman_filter_free((PSMovePositionKalmanFilter *)controller->position_filter);
-					break;
-				}
-			}
+            // Free the old filter, if any
+            if (controller->position_filter != NULL)
+            {
+                switch (tracker->smoothing_type)
+                {
+                case Smoothing_None:
+                    // Nothing to clean up 
+                    break;
+                case Smoothing_LowPass:
+                    psmove_position_lowpass_filter_free((PSMovePositionLowPassFilter *)controller->position_filter);
+                    break;
+                case Smoothing_Kalman:
+                    psmove_position_kalman_filter_free((PSMovePositionKalmanFilter *)controller->position_filter);
+                    break;
+                }
+            }
 
-			// Create the new filter, if any
-			switch (smoothing_type)
-			{
-			case Smoothing_None:
-				// Nothing to clean up 
-				break;
-			case Smoothing_LowPass:
-				controller->position_filter = psmove_position_lowpass_filter_new();
-				break;
-			case Smoothing_Kalman:
-				controller->position_filter = psmove_position_kalman_filter_new();
-				break;
-			}
-		}
+            // Create the new filter, if any
+            switch (smoothing_type)
+            {
+            case Smoothing_None:
+                // Nothing to clean up 
+                break;
+            case Smoothing_LowPass:
+                controller->position_filter = psmove_position_lowpass_filter_new();
+                break;
+            case Smoothing_Kalman:
+                controller->position_filter = psmove_position_kalman_filter_new();
+                break;
+            }
+        }
 
-		tracker->smoothing_type = smoothing_type;
-	}
+        tracker->smoothing_type = smoothing_type;
+    }
 }
 
 void
 psmove_tracker_set_smoothing_2d(PSMoveTracker *tracker, int filter_do_2d_xy, int filter_do_2d_r)
 {
-	psmove_return_if_fail(tracker != NULL);
+    psmove_return_if_fail(tracker != NULL);
 
     tracker->smoothing_settings.filter_do_2d_xy = filter_do_2d_xy > 0;
     tracker->smoothing_settings.filter_do_2d_r = filter_do_2d_r > 0;
@@ -812,10 +812,10 @@ psmove_tracker_new_with_camera_and_settings(int camera, PSMoveTrackerSettings *s
         tracker->settings.color_value_filter_range, 0);
     tracker->storage = cvCreateMemStorage(0);
 
-	if (psmove_tracker_load_smoothing_settings(&(tracker->smoothing_settings)) == PSMove_False)
-	{
-		psmove_tracker_smoothing_settings_set_default(&(tracker->smoothing_settings));
-	}
+    if (psmove_tracker_load_smoothing_settings(&(tracker->smoothing_settings)) == PSMove_False)
+    {
+        psmove_tracker_smoothing_settings_set_default(&(tracker->smoothing_settings));
+    }
 
     psmove_tracker_set_smoothing_type(tracker, tracker->smoothing_settings.filter_3d_type);
 
@@ -834,7 +834,7 @@ psmove_tracker_new_with_camera_and_settings(int camera, PSMoveTrackerSettings *s
     psmove_update_leds(move);
 #endif
 
-	// start the video capture device for tracking
+    // start the video capture device for tracking
 
     // Returns NULL if no control found.
     // e.g. PS3EYE set during compile but not plugged in.
@@ -951,19 +951,19 @@ psmove_tracker_new_with_camera_and_settings(int camera, PSMoveTrackerSettings *s
     }
 
     // Allocate memory for images of each possible ROI size, in colour and grayscale
-	int i;
-	for (i = 0; i < ROIS; i++) {
-		tracker->roiI[i] = cvCreateImage(cvSize(w,h), frame->depth, 3);  // colour
-		tracker->roiM[i] = cvCreateImage(cvSize(w,h), frame->depth, 1);  // grayscale
+    int i;
+    for (i = 0; i < ROIS; i++) {
+        tracker->roiI[i] = cvCreateImage(cvSize(w,h), frame->depth, 3);  // colour
+        tracker->roiM[i] = cvCreateImage(cvSize(w,h), frame->depth, 1);  // grayscale
 
-		/* Smaller rois are always square, and 70% of the previous level */
-		h = w = ((MIN(w,h) * 70) / 100);
-	}
+        /* Smaller rois are always square, and 70% of the previous level */
+        h = w = ((MIN(w,h) * 70) / 100);
+    }
 
-	// prepare structure used for erode and dilate in calibration process
-	int ks = 5; // Kernel Size
-	int kc = (ks + 1) / 2; // Kernel Center
-	tracker->kCalib = cvCreateStructuringElementEx(ks, ks, kc, kc, CV_SHAPE_RECT, NULL);
+    // prepare structure used for erode and dilate in calibration process
+    int ks = 5; // Kernel Size
+    int kc = (ks + 1) / 2; // Kernel Center
+    tracker->kCalib = cvCreateStructuringElementEx(ks, ks, kc, kc, CV_SHAPE_RECT, NULL);
 
 #if defined(__APPLE__) && !defined(CAMERA_CONTROL_USE_PS3EYE_DRIVER)
     printf("Move the controller away and press the Move button\n");
@@ -973,7 +973,7 @@ psmove_tracker_new_with_camera_and_settings(int camera, PSMoveTrackerSettings *s
     psmove_disconnect(move);
 #endif
 
-	return tracker;
+    return tracker;
 }
 
 void
@@ -1556,7 +1556,7 @@ psmove_tracker_get_status(PSMoveTracker *tracker, PSMove *move)
 
 void*
 psmove_tracker_get_frame(PSMoveTracker *tracker) {
-	return tracker->frame;
+    return tracker->frame;
 }
 
 PSMoveTrackerRGBImage
@@ -2135,28 +2135,28 @@ psmove_tracker_get_location(PSMoveTracker *tracker, PSMove *move, float *xcm, fl
     TrackedController *tc = psmove_tracker_find_controller(tracker, move);
 
     if (tc) 
-	{
+    {
         if (psmove_timestamp_value(psmove_timestamp_diff(tracker->ts_camera_converted, tc->last_position_update)) > 0)
         {
             psmove_tracker_update(tracker, move);
         }
         
         if (xcm) 
-		{
+        {
             *xcm = tc->position_cm.x - tc->position_offset.x;
         }
 
         if (ycm) 
-		{
+        {
             *ycm = tc->position_cm.y - tc->position_offset.y;
         }
 
         if (zcm) 
-		{
+        {
             *zcm = tc->position_cm.z - tc->position_offset.z;
         }
     
-		// TODO: return age of tracking values (if possible)
+        // TODO: return age of tracking values (if possible)
         return 1;
     }
 
@@ -2171,8 +2171,8 @@ psmove_tracker_reset_location(PSMoveTracker *tracker, PSMove *move)
 
     TrackedController *tc = psmove_tracker_find_controller(tracker, move);
     if (tc) 	
-	{
-		tc->position_offset = tc->position_cm;
+    {
+        tc->position_offset = tc->position_cm;
     }
 }
 
@@ -2380,46 +2380,46 @@ void psmove_tracker_get_diff(PSMoveTracker* tracker, PSMove* move,
 }
 
 void psmove_tracker_set_roi(PSMoveTracker* tracker, TrackedController* tc, int roi_x, int roi_y, int roi_width, int roi_height) {
-	tc->roi_x = roi_x;
-	tc->roi_y = roi_y;
-	
-	if (tc->roi_x < 0)
-		tc->roi_x = 0;
-	if (tc->roi_y < 0)
-		tc->roi_y = 0;
+    tc->roi_x = roi_x;
+    tc->roi_y = roi_y;
+    
+    if (tc->roi_x < 0)
+        tc->roi_x = 0;
+    if (tc->roi_y < 0)
+        tc->roi_y = 0;
 
-	if (tc->roi_x + roi_width > tracker->frame->width)
-		tc->roi_x = tracker->frame->width - roi_width;
-	if (tc->roi_y + roi_height > tracker->frame->height)
-		tc->roi_y = tracker->frame->height - roi_height;
+    if (tc->roi_x + roi_width > tracker->frame->width)
+        tc->roi_x = tracker->frame->width - roi_width;
+    if (tc->roi_y + roi_height > tracker->frame->height)
+        tc->roi_y = tracker->frame->height - roi_height;
 }
 
 void psmove_tracker_annotate(PSMoveTracker* tracker) {
-	CvPoint p;
-	IplImage* frame = tracker->frame;
+    CvPoint p;
+    IplImage* frame = tracker->frame;
 
     CvFont fontSmall = cvFont(0.8, 1);
     CvFont fontNormal = cvFont(1, 1);
 
-	char text[256];
-	CvScalar c;
-	CvScalar avgC;
-	float avgLum = 0;
-	int roi_w = 0;
-	int roi_h = 0;
+    char text[256];
+    CvScalar c;
+    CvScalar avgC;
+    float avgLum = 0;
+    int roi_w = 0;
+    int roi_h = 0;
 
-	// general statistics
-	avgC = cvAvg(frame, 0x0);
+    // general statistics
+    avgC = cvAvg(frame, 0x0);
     avgLum = (float)th_color_avg(avgC);
-	cvRectangle(frame, cvPoint(0, 0), cvPoint(frame->width, 25), TH_COLOR_BLACK, CV_FILLED, 8, 0);
-	sprintf(text, "fps:%.0f", tracker->debug_fps);
-	cvPutText(frame, text, cvPoint(10, 20), &fontNormal, TH_COLOR_WHITE);
+    cvRectangle(frame, cvPoint(0, 0), cvPoint(frame->width, 25), TH_COLOR_BLACK, CV_FILLED, 8, 0);
+    sprintf(text, "fps:%.0f", tracker->debug_fps);
+    cvPutText(frame, text, cvPoint(10, 20), &fontNormal, TH_COLOR_WHITE);
     if (tracker->duration) {
         tracker->debug_fps = (0.85f * tracker->debug_fps + 0.15f *
             (1000.f / (float)tracker->duration));
     }
-	sprintf(text, "avg(lum):%.0f", avgLum);
-	cvPutText(frame, text, cvPoint(255, 20), &fontNormal, TH_COLOR_WHITE);
+    sprintf(text, "avg(lum):%.0f", avgLum);
+    cvPutText(frame, text, cvPoint(255, 20), &fontNormal, TH_COLOR_WHITE);
 
 
     // draw all/one controller information to camera image
@@ -2516,23 +2516,23 @@ psmove_tracker_estimate_circle_from_contour(CvSeq* cont, float *x, float *y, flo
     CvPoint * p2;
     int found = 0;
 
-	int step = MAX(1,cont->total/20);
+    int step = MAX(1,cont->total/20);
 
-	// compare every two points of the contour (but not more than 20)
-	// to find the most distant pair
-	for (i = 0; i < cont->total; i += step) {
-		p1 = (CvPoint*) cvGetSeqElem(cont, i);
-		for (j = i + 1; j < cont->total; j += step) {
-			p2 = (CvPoint*) cvGetSeqElem(cont, j);
-			cd = (float)th_dist_squared(*p1,*p2);
-			if (cd > d) {
-				d = cd;
-				m1 = *p1;
-				m2 = *p2;
+    // compare every two points of the contour (but not more than 20)
+    // to find the most distant pair
+    for (i = 0; i < cont->total; i += step) {
+        p1 = (CvPoint*) cvGetSeqElem(cont, i);
+        for (j = i + 1; j < cont->total; j += step) {
+            p2 = (CvPoint*) cvGetSeqElem(cont, j);
+            cd = (float)th_dist_squared(*p1,*p2);
+            if (cd > d) {
+                d = cd;
+                m1 = *p1;
+                m2 = *p2;
                                 found = 1;
-			}
-		}
-	}
+            }
+        }
+    }
     // calculate center of that pair
     if (found) {
         *x = 0.5f * (float)(m1.x + m2.x);
@@ -2549,35 +2549,35 @@ psmove_tracker_center_roi_on_controller(TrackedController* tc, PSMoveTracker* tr
     psmove_return_val_if_fail(tracker != NULL, 0);
     psmove_return_val_if_fail(center != NULL, 0);
 
-	CvScalar min = th_scalar_sub(tc->eColorHSV, tracker->rHSV);
+    CvScalar min = th_scalar_sub(tc->eColorHSV, tracker->rHSV);
         CvScalar max = th_scalar_add(tc->eColorHSV, tracker->rHSV);
 
-	IplImage *roi_i = tracker->roiI[tc->roi_level];
-	IplImage *roi_m = tracker->roiM[tc->roi_level];
+    IplImage *roi_i = tracker->roiI[tc->roi_level];
+    IplImage *roi_m = tracker->roiM[tc->roi_level];
 
-	// cut out the roi!
-	cvSetImageROI(tracker->frame, cvRect(tc->roi_x, tc->roi_y, roi_i->width, roi_i->height));
-	cvCvtColor(tracker->frame, roi_i, CV_BGR2HSV);
+    // cut out the roi!
+    cvSetImageROI(tracker->frame, cvRect(tc->roi_x, tc->roi_y, roi_i->width, roi_i->height));
+    cvCvtColor(tracker->frame, roi_i, CV_BGR2HSV);
 
-	// apply color filter
-	cvInRangeS(roi_i, min, max, roi_m);
-	
-	float sizeBest = 0;
-	CvSeq* contourBest = NULL;
-	psmove_tracker_biggest_contour(roi_m, tracker->storage, &contourBest, &sizeBest);
-	if (contourBest) {
-		cvSet(roi_m, TH_COLOR_BLACK, NULL);
-		cvDrawContours(roi_m, contourBest, TH_COLOR_WHITE, TH_COLOR_WHITE, -1, CV_FILLED, 8, cvPoint(0, 0));
-		// calucalte image-moments to estimate the better ROI center
-		CvMoments mu;
-		cvMoments(roi_m, &mu, 0);
+    // apply color filter
+    cvInRangeS(roi_i, min, max, roi_m);
+    
+    float sizeBest = 0;
+    CvSeq* contourBest = NULL;
+    psmove_tracker_biggest_contour(roi_m, tracker->storage, &contourBest, &sizeBest);
+    if (contourBest) {
+        cvSet(roi_m, TH_COLOR_BLACK, NULL);
+        cvDrawContours(roi_m, contourBest, TH_COLOR_WHITE, TH_COLOR_WHITE, -1, CV_FILLED, 8, cvPoint(0, 0));
+        // calucalte image-moments to estimate the better ROI center
+        CvMoments mu;
+        cvMoments(roi_m, &mu, 0);
 
         *center = cvPoint((int)(mu.m10 / mu.m00), (int)(mu.m01 / mu.m00));
-		center->x += tc->roi_x - roi_m->width / 2;
-		center->y += tc->roi_y - roi_m->height / 2;
-	}
-	cvClearMemStorage(tracker->storage);
-	cvResetImageROI(tracker->frame);
+        center->x += tc->roi_x - roi_m->width / 2;
+        center->y += tc->roi_y - roi_m->height / 2;
+    }
+    cvClearMemStorage(tracker->storage);
+    cvResetImageROI(tracker->frame);
 
         return (contourBest != NULL);
 }
