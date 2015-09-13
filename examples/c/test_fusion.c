@@ -125,14 +125,15 @@ int main(int arg, char** args) {
     // You can also add an additional transform now or at any point
     float add_pos[3] = { 0, 0, 0 };
     float add_quat[4] = { 1, 0, 0, 0 };
-    psmove_fusion_update_transform(fusion, add_pos, add_quat);
+    float add_scale[3] = { 1, 1, 1 };
+    psmove_fusion_update_transform(fusion, add_pos, add_quat, add_scale);
 
     // For example, if you have a dk2_camera_pose as follows:
     // (px, py, pz, qw, qx, qy, qz)
     // 1.7896  -13.1017  -86.5323    0.9998    0.0041   -0.0158    0.0108
     //add_pos[0] = 1.7896; add_pos[1] = -13.1017; add_pos[2] = -86.5323;
     //add_quat[0] = 0.9998; add_quat[1] = 0.0041; add_quat[2] = -0.0158; add_quat[3] = 0.0108;
-    //psmove_fusion_update_transform(fusion, add_pos, add_quat);
+    //psmove_fusion_update_transform(fusion, add_pos, add_quat, add_scale);
 
     while ((cvWaitKey(1) & 0xFF) != 27) {
         psmove_tracker_update_image(tracker);

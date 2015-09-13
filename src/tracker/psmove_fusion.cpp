@@ -108,13 +108,15 @@ print_mat4(glm::mat4 in)
 }
 
 void
-psmove_fusion_update_transform(PSMoveFusion *fusion, float *pos_xyz, float *quat_wxyz)
+psmove_fusion_update_transform(PSMoveFusion *fusion, float *pos_xyz, float *quat_wxyz, float *scale_xyz)
 {
     glm::vec3 position(pos_xyz[0], pos_xyz[1], pos_xyz[2]);
     glm::quat quaternion(quat_wxyz[0], quat_wxyz[1], quat_wxyz[2], quat_wxyz[3]);
+    glm::vec3 scale(scale_xyz[0], scale_xyz[1], scale_xyz[2]);
     glm::mat4 quatmat = glm::mat4_cast(quaternion);
     glm::mat4 posmat = glm::translate(glm::mat4(), position);
-    fusion->total_xf = posmat * quatmat * fusion->physical_xf;
+    glm::mat4 scalemat = glm::scale(glm::mat4(), scale);
+    fusion->total_xf = posmat * quatmat * scalemat * fusion->physical_xf;
     /*
     printf("fusion->total_xf = posmat * quatmat * fusion->physical_xf;\n");
     printf("posmat:\n");
@@ -128,6 +130,14 @@ psmove_fusion_update_transform(PSMoveFusion *fusion, float *pos_xyz, float *quat
     printf("fusion->total_xf:\n");
     print_mat4(fusion->total_xf);
     */
+}
+
+void
+psmove_fusion_update_transform_mat44(PSMoveFusion *fusion, float *mat44)
+{
+    glm::mat4 fusion_xf= glm::make_mat4(mat44);
+
+    fusion->total_xf = fusion_xf * fusion->physical_xf;
 }
 
 void
@@ -148,10 +158,10 @@ psmove_fusion_new(PSMoveTracker *tracker, float z_near, float z_far)
     psmove_tracker_get_size(tracker, &width, &height);
     fusion->width = (float)width;
     fusion->height = (float)height;
-    
+
     float fl;  // Focal length of camera in pixels.
     psmove_tracker_get_focal_length(tracker, &fl);
-    
+
     // Calculate the vertical FOV
     // tan(theta) = l / F, where l is height/2, F is the focal length, and theta is v_fov/2
     float v_fov = 2 * atanf( (float(fusion->height)/2.f) / fl);
@@ -161,12 +171,12 @@ psmove_fusion_new(PSMoveTracker *tracker, float z_near, float z_far)
                                                     fusion->width,
                                                     fusion->height,
                                                     z_near, z_far);
-    
+
     fusion->cameraview = glm::lookAt(
         glm::vec3(0, 0, 0),     // Camera is at origin. TODO: -tracker->settings.zorigin_cm
         glm::vec3(0, 0, 1),     // Camera is looking back at you
         glm::vec3(0, 1, 0));    // Up is up.
-    
+
     //TODO: Set projection and cameraview depending on psmove_tracker_get_mirror(fusion->tracker)
     //This needs glm 0.9.7 and deciding between glm::perspectiveFovRH and LH
 
@@ -181,7 +191,6 @@ float *
 psmove_fusion_get_projection_matrix(PSMoveFusion *fusion)
 {
     psmove_return_val_if_fail(fusion != NULL, NULL);
-
     return glm::value_ptr(fusion->projection);
 }
 
@@ -191,25 +200,25 @@ psmove_fusion_get_modelview_matrix(PSMoveFusion *fusion, PSMove *move)
     psmove_return_val_if_fail(fusion != NULL, NULL);
     psmove_return_val_if_fail(move != NULL, NULL);
 
-	// Get the orientation of the controller
-	glm::quat q;
+    // Get the orientation of the controller
+    glm::quat q;
     psmove_get_orientation(move, &q.w, &q.x, &q.y, &q.z);
-	glm::mat4 rotation= glm::mat4_cast(q);
-    
-	// Get the position of the controller
-	glm::vec3 t;
+    glm::mat4 rotation= glm::mat4_cast(q);
+
+    // Get the position of the controller
+    glm::vec3 t;
     psmove_fusion_get_position(fusion, move, &t.x, &t.y, &t.z);
-	glm::mat4 translation= glm::translate(glm::mat4(), t);
+    glm::mat4 translation= glm::translate(glm::mat4(), t);
 
     // TODO: Instead of flipping, the projection through the cameraview should be sufficient...
     // but that requires newer glm and setting the perspective based on RH or LH.
-	glm::vec3 s= psmove_tracker_get_mirror(fusion->tracker) ? glm::vec3(-1, 1, 1) : glm::vec3(1, 1, 1);
-	glm::mat4 flip = glm::scale(glm::mat4(), s);
+    glm::vec3 s= psmove_tracker_get_mirror(fusion->tracker) ? glm::vec3(-1, 1, 1) : glm::vec3(1, 1, 1);
+    glm::mat4 flip = glm::scale(glm::mat4(), s);
 
-	// Combine the transforms in reverse order we want them applied
-	// 1) Rotate the controller to match the orientation obtained by sensor fusion
-	// 2) Flip about the x-axis if video mirroring is turned OFF
-	// 3) Translate the controller to match the position given by tracking fusion
+    // Combine the transforms in reverse order we want them applied
+    // 1) Rotate the controller to match the orientation obtained by sensor fusion
+    // 2) Flip about the x-axis if video mirroring is turned OFF
+    // 3) Translate the controller to match the position given by tracking fusion
     fusion->modelview = fusion->cameraview * flip * translation * rotation;
 
     return glm::value_ptr(fusion->modelview);
@@ -227,63 +236,6 @@ psmove_fusion_get_position(PSMoveFusion *fusion, PSMove *move,
 float *x, float *y, float *z)
 {
     psmove_fusion_get_location(fusion, move, x, y, z);
-    
-    //psmove_return_if_fail(fusion != NULL);
-    //psmove_return_if_fail(move != NULL);
-
-    //float camX, camY, camR;
-    //psmove_tracker_get_position(fusion->tracker, move, &camX, &camY, &camR);
-
-    //float winX = (float)camX;
-    //float winY = fusion->height - (float)camY;
-    //float winZ = .5; /* start value for binary search */
-
-    //float targetWidth = 2.*camR;
-
-    //glm::vec3 obj;
-
-    ///* Binary search for the best distance based on the current projection */
-    //float step = .25;
-    //while (step > PSMOVE_FUSION_STEP_EPSILON) {
-    //    /* Calculate center position of sphere */
-    //    obj = glm::unProject(glm::vec3(winX, winY, winZ),
-    //        glm::mat4(), fusion->projection, fusion->viewport);
-
-    //    /* Project left edge center of sphere */
-    //    glm::vec3 left = glm::project(glm::vec3(obj.x - .5, obj.y, obj.z),
-    //        glm::mat4(), fusion->projection, fusion->viewport);
-
-    //    /* Project right edge center of sphere */
-    //    glm::vec3 right = glm::project(glm::vec3(obj.x + .5, obj.y, obj.z),
-    //        glm::mat4(), fusion->projection, fusion->viewport);
-
-    //    float width = (right.x - left.x);
-    //    if (width > targetWidth) {
-    //        /* Too near */
-    //        winZ += step;
-    //    }
-    //    else if (width < targetWidth) {
-    //        /* Too far away */
-    //        winZ -= step;
-    //    }
-    //    else {
-    //        /* Perfect fit */
-    //        break;
-    //    }
-    //    step *= .5;
-    //}
-
-    /*if (x != NULL) {
-        *x = obj.x;
-    }
-
-    if (y != NULL) {
-        *y = obj.y;
-    }
-
-    if (z != NULL) {
-        *z = obj.z;
-    }*/
 }
 
 void
@@ -292,7 +244,7 @@ psmove_fusion_get_location(PSMoveFusion *fusion, PSMove *move,
 {
     psmove_return_if_fail(fusion != NULL);
     psmove_return_if_fail(move != NULL);
-    
+
     if (x != NULL && y != NULL && z != NULL)
     {
         psmove_tracker_get_location(fusion->tracker, move, x, y, z);

@@ -126,8 +126,8 @@ camera_control_new(int cameraID)
 CameraControl *
 camera_control_new_with_settings(int cameraID, int width, int height, int framerate, int cam_type)
 {
-	CameraControl* cc = (CameraControl*) calloc(1, sizeof(CameraControl));
-	cc->cameraID = cameraID;
+    CameraControl* cc = (CameraControl*) calloc(1, sizeof(CameraControl));
+    cc->cameraID = cameraID;
 
     if (framerate <= 0) {
         framerate = PSMOVE_TRACKER_DEFAULT_FPS;
@@ -155,24 +155,24 @@ camera_control_new_with_settings(int cameraID, int width, int height, int framer
 
 #if defined(CAMERA_CONTROL_USE_CL_DRIVER)
     // Windows 32-bit. Either CL_SDK or Registry_requiring
-	int cams = CLEyeGetCameraCount();
+    int cams = CLEyeGetCameraCount();
 
-	if (cams <= cameraID) {
+    if (cams <= cameraID) {
             free(cc);
             return NULL;
-	}
+    }
 
-	GUID cguid = CLEyeGetCameraUUID(cameraID);
-	cc->camera = CLEyeCreateCamera(cguid,
+    GUID cguid = CLEyeGetCameraUUID(cameraID);
+    cc->camera = CLEyeCreateCamera(cguid,
         CLEYE_COLOR_PROCESSED, CLEYE_VGA, framerate);
 
     CLEyeCameraGetFrameDimensions(cc->camera, &width, &height);
 
-	// Depending on color mode chosen, create the appropriate OpenCV image
+    // Depending on color mode chosen, create the appropriate OpenCV image
     cc->frame4ch = cvCreateImage(cvSize(width, height), IPL_DEPTH_8U, 4);
     cc->frame3ch = cvCreateImage(cvSize(width, height), IPL_DEPTH_8U, 3);
 
-	CLEyeCameraStart(cc->camera);
+    CLEyeCameraStart(cc->camera);
 
 #elif defined(CAMERA_CONTROL_USE_PS3EYE_DRIVER)
     // Mac or Windows
@@ -221,7 +221,7 @@ camera_control_new_with_settings(int cameraID, int width, int height, int framer
     cc->height = height;
     cc->deinterlace = PSMove_False;
 
-	return cc;
+    return cc;
 }
 
 void
@@ -380,7 +380,7 @@ camera_control_delete(CameraControl* cc)
         cvReleaseImage(&cc->frame3ch);
 
     if (cc->frame4ch != 0x0)
-		cvReleaseImage(&cc->frame4ch);
+        cvReleaseImage(&cc->frame4ch);
 
     CLEyeDestroyCamera(cc->camera);
 #elif defined(CAMERA_CONTROL_USE_PS3EYE_DRIVER)

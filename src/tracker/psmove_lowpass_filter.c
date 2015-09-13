@@ -37,70 +37,70 @@
 
 //-- structures ----
 struct _PSMovePositionLowPassFilter {
-	// x/y/z coordinates of sphere in cm from camera focal point
-	PSMove_3AxisVector position;
+    // x/y/z coordinates of sphere in cm from camera focal point
+    PSMove_3AxisVector position;
 
-	bool is_initialized;
+    bool is_initialized;
 };
 
 //-- public methods -----
 PSMovePositionLowPassFilter *
 psmove_position_lowpass_filter_new()
 {
-	PSMovePositionLowPassFilter *filter_state = (PSMovePositionLowPassFilter *)calloc(1, sizeof(PSMovePositionLowPassFilter));
+    PSMovePositionLowPassFilter *filter_state = (PSMovePositionLowPassFilter *)calloc(1, sizeof(PSMovePositionLowPassFilter));
 
-	filter_state->is_initialized = false;
-	filter_state->position = psmove_3axisvector_xyz(0.f, 0.f, 0.f);
+    filter_state->is_initialized = false;
+    filter_state->position = psmove_3axisvector_xyz(0.f, 0.f, 0.f);
 
-	return filter_state;
+    return filter_state;
 }
 
 void
 psmove_position_lowpass_filter_free(PSMovePositionLowPassFilter *filter_state)
 {
     psmove_return_if_fail(filter_state != NULL);
-	free(filter_state);
+    free(filter_state);
 }
 
 void
 psmove_position_lowpass_filter_init(
-	const PSMove_3AxisVector *position,
-	PSMovePositionLowPassFilter *filter_state)
+    const PSMove_3AxisVector *position,
+    PSMovePositionLowPassFilter *filter_state)
 {
-	filter_state->position= *position;
-	filter_state->is_initialized = true;
+    filter_state->position= *position;
+    filter_state->is_initialized = true;
 }
 
 PSMove_3AxisVector
 psmove_position_lowpass_filter_get_position(PSMovePositionLowPassFilter *filter_state)
 {
-	return filter_state->position;
+    return filter_state->position;
 }
 
 void 
 psmove_position_lowpass_filter_update(
-	const PSMoveTrackerSmoothingSettings *tracker_settings,
-	const PSMove_3AxisVector *measured_position,	// The position measured by the sensors.
-	PSMovePositionLowPassFilter *filter_state)
+    const PSMoveTrackerSmoothingSettings *tracker_settings,
+    const PSMove_3AxisVector *measured_position,	// The position measured by the sensors.
+    PSMovePositionLowPassFilter *filter_state)
 {
-	if (psmove_3axisvector_is_valid(measured_position))
-	{
-		if (!filter_state->is_initialized)
-		{
-			psmove_position_lowpass_filter_init(measured_position, filter_state);
-		}
-		else
-		{
-			// Traveling 10 cm in one frame should have 0 smoothing
-			// Traveling 0+noise cm in one frame should have
-			// 60% xy smoothing, 80% z smoothing
-			float distance = psmove_3axisvector_length_between(&filter_state->position, measured_position);
-			float new_xy_weight = clampf01(lerpf(0.40f, 1.00f, distance/10.f));
-			filter_state->position.x = lerpf(filter_state->position.x, measured_position->x, new_xy_weight);
-			filter_state->position.y = lerpf(filter_state->position.y, measured_position->y, new_xy_weight);
+    if (psmove_3axisvector_is_valid(measured_position))
+    {
+        if (!filter_state->is_initialized)
+        {
+            psmove_position_lowpass_filter_init(measured_position, filter_state);
+        }
+        else
+        {
+            // Traveling 10 cm in one frame should have 0 smoothing
+            // Traveling 0+noise cm in one frame should have
+            // 60% xy smoothing, 80% z smoothing
+            float distance = psmove_3axisvector_length_between(&filter_state->position, measured_position);
+            float new_xy_weight = clampf01(lerpf(0.40f, 1.00f, distance/10.f));
+            filter_state->position.x = lerpf(filter_state->position.x, measured_position->x, new_xy_weight);
+            filter_state->position.y = lerpf(filter_state->position.y, measured_position->y, new_xy_weight);
 
-			float new_z_weight = clampf01(lerpf(0.20f, 1.0f, distance/10.f));
-			filter_state->position.z = lerpf(filter_state->position.z, measured_position->z, new_z_weight);
-		}
-	}
+            float new_z_weight = clampf01(lerpf(0.20f, 1.0f, distance/10.f));
+            filter_state->position.z = lerpf(filter_state->position.z, measured_position->z, new_z_weight);
+        }
+    }
 }
