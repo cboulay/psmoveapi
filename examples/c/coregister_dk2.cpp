@@ -1,12 +1,34 @@
+//-- includes -----
 #include <stdio.h>  // printf
 #include <stdlib.h> // calloc, free
 #include <assert.h>
-#include <Eigen/Dense>
+
+
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
+
+#include "psmove_examples_opengl.h"
 #include "psmove.h"
 #include "psmove_tracker.h"
+
 #include "OVR_CAPI.h"
 #include "Extras/OVR_Math.h"
 
+#include "DK2_3dmodel.h"
+
+#include <Eigen/Dense>
+
+//-- macros -----
+#define Log_INFO(section, msg, ...) \
+    fprintf(stdout, "INFO [" section "] " msg "\n", ## __VA_ARGS__)
+
+#define Log_ERROR(section, msg, ...) \
+    fprintf(stderr, "ERROR [" section "] " msg "\n", ## __VA_ARGS__)
+
+//-- typedefs -----
 #ifndef OVR_OS_WIN32
 //#define ovr_Initialize ovrHmd_Initialize
 #define ovr_ConfigureTracking ovrHmd_ConfigureTracking
@@ -15,66 +37,544 @@
 #define ovr_Destroy ovrHmd_Destroy
 #endif
 
+//-- constants -----
 #define NPOSES 300
 
-OVR::Matrix4f getDK2CameraInv44(ovrHmd HMD) {
+//-- definitions -----
+class PSMoveContext 
+{
+public:
+    PSMoveContext();
+    ~PSMoveContext();
 
-    ovrTrackingState dk2state;
-    
-    dk2state = ovr_GetTrackingState(HMD, 0.0);
-    OVR::Posef campose(dk2state.CameraPose);
-    campose.Rotation.Normalize();  // Probably does nothing as the SDK returns normalized quats anyway.
-    campose.Translation *= 100.0;  // m -> cm
-    
-    // Print to file - for testing in Matlab
-    char *fpath = psmove_util_get_file_path("output_camerapose.csv");
-    FILE *fp = fopen(fpath, "w");
-    free(fpath);
-    fprintf(fp, "%f, %f, %f, %f, %f, %f, %f\n",
-        campose.Translation.x, campose.Translation.y, campose.Translation.z,
-        campose.Rotation.w, campose.Rotation.x, campose.Rotation.y, campose.Rotation.z);
-    fclose(fp);
+    bool init(int argc, char** argv);
+    void destroy();
+    void update();
 
-    OVR::Matrix4f camMat(campose);
-    
-    printf("Camera pose 4x4:\n");
-    printf("%f, %f, %f, %f\n%f, %f, %f, %f\n%f, %f, %f, %f\n%f, %f, %f, %f\n",
-        camMat.M[0][0], camMat.M[0][1], camMat.M[0][2], camMat.M[0][3],
-        camMat.M[1][0], camMat.M[1][1], camMat.M[1][2], camMat.M[1][3],
-        camMat.M[2][0], camMat.M[2][1], camMat.M[2][2], camMat.M[2][3],
-        camMat.M[3][0], camMat.M[3][1], camMat.M[3][2], camMat.M[3][3]);
+private:
+    bool m_psmoveapi_initialized;
+    PSMove *m_move;
+    PSMoveTracker *m_tracker;
+    enum PSMoveTracker_Status m_tracking_status;
+    PSMove_3AxisVector m_tracker_position;
+    unsigned int m_buttons_down;
+    unsigned int m_buttons_pressed;
+    unsigned int m_buttons_released;
+};
 
-    camMat.InvertHomogeneousTransform();
-    printf("Inverted camera pose 4x4:\n");
-    printf("%f, %f, %f, %f\n%f, %f, %f, %f\n%f, %f, %f, %f\n%f, %f, %f, %f\n",
-        camMat.M[0][0], camMat.M[0][1], camMat.M[0][2], camMat.M[0][3],
-        camMat.M[1][0], camMat.M[1][1], camMat.M[1][2], camMat.M[1][3],
-        camMat.M[2][0], camMat.M[2][1], camMat.M[2][2], camMat.M[2][3],
-        camMat.M[3][0], camMat.M[3][1], camMat.M[3][2], camMat.M[3][3]);
+class DK2Context 
+{
+public:
+    DK2Context();
+    ~DK2Context();
 
-    return camMat;
+    bool init();
+    void destroy();
+    void update();
+
+private:
+    bool m_oculusapi_initialized;
+    ovrHmd m_HMD;
+    ovrTrackingState m_dk2state;
+    OVR::Posef m_dk2pose;               // The DK2 pose
+    OVR::Matrix4f m_dk2mat;             // The DK2 HMD pose in 4x4
+#if defined(OVR_OS_WIN32)
+    ovrGraphicsLuid m_luid;
+#endif
+};
+
+class Renderer 
+{
+public:
+    Renderer();
+    ~Renderer();
+
+    bool init();
+    void destroy();
+
+    void render_begin();
+    void render_end();
+
+private:
+    bool m_sdlapi_initialized;
+    SDL_Window *m_window;
+    SDL_GLContext m_glContext;
+};
+
+class App
+{
+public:
+    App();
+
+    int exec(int argc, char** argv);
+
+protected:
+    bool init(int argc, char** argv);
+    void destroy();
+    void update();
+    void render();
+
+private:
+    PSMoveContext m_psmove_context;
+    DK2Context m_dk2_context;
+    Renderer m_renderer;
+};
+
+//-- prototypes -----
+OVR::Matrix4f getDK2CameraInv44(ovrHmd HMD);
+void ovrmat2eigmat(OVR::Matrix4f& in_ovr, Eigen::Matrix4f& in_eig);
+
+//-- entry point -----
+extern "C" int main(int argc, char *argv[])
+{
+    App app;
+
+    return app.exec(argc, argv);
 }
 
-void ovrmat2eigmat(OVR::Matrix4f& in_ovr, Eigen::Matrix4f& in_eig)
+//-- implementation -----
+
+//-- App --
+App::App()
+    : m_psmove_context()
+    , m_dk2_context()
+    , m_renderer()
 {
-    // The following can probably be done with a simple memcpy but oh well.
-    int row, col;
-    for (row = 0; row < 4; row++)
+}
+
+bool
+App::init(int argc, char** argv)
+{
+    bool success= true;
+
+    if (success && !m_renderer.init())
     {
-        for (col = 0; col < 4; col++)
+        Log_ERROR("App::init", "Failed to initialize renderer!");
+        success= false;
+    }
+
+    if (success && !m_dk2_context.init())
+    {
+        Log_ERROR("App::init", "Failed to initialize Oculus tracking context!");
+        success= false;
+    }
+
+    if (success && !m_psmove_context.init(argc, argv))
+    {
+        Log_ERROR("App::init", "Failed to initialize PSMove tracking context!");
+        success= false;
+    }
+
+    return success;
+}
+
+void
+App::destroy()
+{
+    m_psmove_context.destroy();
+    m_dk2_context.destroy();
+    m_renderer.destroy();
+}
+
+void
+App::update()
+{
+    m_psmove_context.update();
+    m_dk2_context.update();
+}
+
+void
+App::render()
+{
+    m_renderer.render_begin();
+    //TODO: Render the current calibration stage
+    m_renderer.render_end();
+}
+
+int
+App::exec(int argc, char** argv)
+{
+    int result= 0;
+
+    if (init(argc, argv))
+    {
+        SDL_Event e;
+
+        while (true) 
         {
-            in_eig(row, col) = in_ovr.M[row][col];
+            if (SDL_PollEvent(&e)) 
+            {
+                if (e.type == SDL_QUIT) 
+                {
+                    Log_INFO("App::exec", "QUIT message received");
+                    break;
+                }
+            }
+
+            update();
+            render();
         }
     }
+    else
+    {
+        Log_ERROR("App::exec", "Failed to initialize application!");
+        result= -1;
+    }
+
+    destroy();
+
+    return result;
 }
 
-int main(int arg, char** args) {
+//-- PSMoveContext -----
+PSMoveContext::PSMoveContext() 
+    : m_psmoveapi_initialized(false)
+    , m_move(NULL)
+    , m_tracker(NULL)
+    , m_tracking_status(Tracker_NOT_CALIBRATED)
+    , m_buttons_down(0)
+    , m_buttons_pressed(0)
+    , m_buttons_released(0)
+{
+    m_tracker_position.x= m_tracker_position.y = m_tracker_position.z= 0.f;
 
-    if (!psmove_init(PSMOVE_CURRENT_VERSION))
+}
+
+PSMoveContext::~PSMoveContext()
+{
+    assert(!m_psmoveapi_initialized);
+}
+
+bool PSMoveContext::init(int argc, char** argv)
+{
+    bool success= true;
+
+    Log_INFO("PSMoveContext::init()", "Initializing PSMove Context");
+
+    if (psmove_init(PSMOVE_CURRENT_VERSION))
     {
-        printf("PS Move API init failed (wrong version?)");
-        return -1;
+        m_psmoveapi_initialized= true;
     }
+    else
+    {
+        Log_ERROR("PSMoveContext::init()", "PS Move API init failed (wrong version?)");
+        success = false;
+    }
+
+    if (success && psmove_count_connected() < 1)
+    {
+        Log_ERROR("PSMoveContext::init()", "No PSMove controllers connected!");
+        success = false;
+    }
+
+    Log_INFO("PSMoveContext::init()", "Turning on PSMove Tracking Camera");
+    if (success)
+    {
+        PSMoveTrackerSettings settings;
+        psmove_tracker_settings_set_default(&settings);
+        settings.color_mapping_max_age = 0;
+        settings.exposure_mode = Exposure_LOW;
+        settings.camera_mirror = PSMove_True;
+        settings.use_fitEllipse = 1;
+
+        m_tracker = psmove_tracker_new_with_settings(&settings);
+        if (m_tracker != NULL) 
+        {
+            Log_INFO("PSMoveContext::init()", "Tracking camera initialized");
+        }
+        else
+        {
+            Log_ERROR("PSMoveContext::init()", "No tracker available! (Missing PS3Eye camera?)");
+            success= false;
+        }
+    }
+
+    Log_INFO("PSMoveContext::init()", "Calibrating PSMove tracking color...");
+    if (success)
+    {
+        enum PSMoveTracker_Status tracking_status = Tracker_TRACKING;
+        int result;
+        m_move = psmove_connect();
+
+        if (success && m_move == NULL)
+        {
+            Log_ERROR("PSMoveContext::init()", "Failed to connect psmove controller. Is it turned on?");
+            success= false;
+        }
+
+        if (success && !psmove_has_calibration(m_move))
+        {
+            Log_ERROR("PSMoveContext::init()", "Controller had invalid USB calibration blob. Re-Pair with the PC?");
+            success= false;
+        }
+
+        if (success)
+        {
+            psmove_enable_orientation(m_move, PSMove_True);  // Though we don't actually use it.
+
+            if (!psmove_has_orientation(m_move))
+            {
+                Log_ERROR("PSMoveContext::init()", "Failed to initialize PSMove orientation update.");
+                success= false;
+            }
+        }
+
+        while (success) 
+        {
+            if (argc >= 3) 
+            {
+                unsigned char r= (unsigned char)atoi(argv[1]);
+                unsigned char g= (unsigned char)atoi(argv[2]);
+                unsigned char b= (unsigned char)atoi(argv[3]);
+
+                Log_INFO("PSMoveContext::init()", "Setting LEDS for controller 1 from command-line r: %i, g: %i, b: %i", r, g, b);
+                result = psmove_tracker_enable_with_color(m_tracker, m_move, r, g, b);
+            }
+            else 
+            {
+                result = psmove_tracker_enable(m_tracker, m_move);
+            }
+            
+            if (result == Tracker_CALIBRATED) 
+            {
+                Log_INFO("PSMoveContext::init()", "Successfully calibrated tracking color");
+                break;
+            } 
+            else 
+            {
+                Log_ERROR("PSMoveContext::init()", "Failed to calibrate color. Is PSMove in frame? Retrying...");
+            }
+        }
+    }
+
+    return success;
+}
+
+void PSMoveContext::destroy()
+{
+    if (m_move != NULL)
+    {
+        psmove_disconnect(m_move);
+        m_move= NULL;
+    }
+
+    if (m_tracker != NULL)
+    {
+        psmove_tracker_free(m_tracker);
+        m_tracker= NULL;
+    }
+
+    if (m_psmoveapi_initialized)
+    {
+        psmove_shutdown();
+        m_psmoveapi_initialized= false;
+    }
+}
+
+void PSMoveContext::update()
+{
+    assert(m_tracker != NULL);
+    assert(m_move != NULL);
+
+    psmove_tracker_update_image(m_tracker);
+    psmove_tracker_update(m_tracker, m_move);
+    m_tracking_status = psmove_tracker_get_status(m_tracker, m_move);
+
+    while (psmove_poll(m_move));
+    
+    psmove_tracker_get_location(m_tracker, m_move, 
+        &m_tracker_position.x, &m_tracker_position.y, &m_tracker_position.z);
+
+    m_buttons_down = psmove_get_buttons(m_move);
+    psmove_get_button_events(m_move, &m_buttons_pressed, &m_buttons_released);
+}
+ 
+//-- DK2Context -----
+DK2Context::DK2Context()
+    : m_oculusapi_initialized(false)
+    , m_HMD(NULL)
+    , m_dk2pose()
+    , m_dk2mat()
+{
+    memset(&m_dk2state, 0, sizeof(ovrTrackingState));
+#if defined(OVR_OS_WIN32)
+    memset(&m_luid, 0, sizeof(ovrGraphicsLuid));
+#endif
+
+}
+
+DK2Context::~DK2Context()
+{
+    assert(!m_oculusapi_initialized);
+}
+
+bool DK2Context::init()
+{
+    bool success= true;
+
+    Log_INFO("DK2Context::init()", "Initializing DK2 Context");
+
+    if (ovr_Initialize(0) == ovrSuccess)
+    {
+        m_oculusapi_initialized= true;
+    }
+    else
+    {
+        Log_ERROR("DK2Context::init()", "Oculus API init failed (different SDK installed?)");
+        success = false;
+    }
+
+    if (success)
+    {
+#if defined(OVR_OS_WIN32)
+        success= (ovr_Create(&m_HMD, &m_luid) == ovrSuccess);
+#elif defined(OVR_OS_MAC)
+        m_HMD = ovrHmd_Create(0);
+        success= (m_HMD != NULL);
+#endif
+
+        if (!success)
+        {
+            Log_ERROR("DK2Context::init()", "Failed to create HMD context");
+            success = false;
+        }
+    }
+
+    if (success && 
+        ovr_ConfigureTracking(
+            m_HMD,
+            ovrTrackingCap_Orientation | ovrTrackingCap_MagYawCorrection | ovrTrackingCap_Position, 
+            0) != ovrSuccess)
+    {
+        Log_ERROR("DK2Context::init()", "Failed to configure tracking");
+        success = false;
+    }
+
+    return success;
+}
+
+void DK2Context::destroy()
+{
+    if (m_HMD != NULL)
+    {
+        ovr_Destroy(m_HMD);
+        m_HMD= NULL;
+    }
+
+    if (m_oculusapi_initialized)
+    {
+        ovr_Shutdown();
+        m_oculusapi_initialized= false;
+    }
+}
+
+void DK2Context::update()
+{
+    // Get DK2 tracking state (contains pose)
+    m_dk2state = ovr_GetTrackingState(m_HMD, 0.0);
+    m_dk2pose = m_dk2state.HeadPose.ThePose;
+    m_dk2pose.Rotation.Normalize();
+    m_dk2pose.Translation *= 100.0;
+}
+
+//-- Renderer -----
+Renderer::Renderer()
+    : m_sdlapi_initialized(false)
+    , m_window(NULL)
+    , m_glContext(NULL)
+{
+}
+
+Renderer::~Renderer()
+{
+    assert(!m_sdlapi_initialized);
+}
+
+bool Renderer::init()
+{
+    bool success = true;
+
+    Log_INFO("Renderer::init()", "Initializing Renderer Context");
+
+    if (SDL_Init(SDL_INIT_VIDEO) == 0) 
+    {
+        m_sdlapi_initialized= true;
+    }
+    else
+    {
+        Log_ERROR("Renderer::init", "Unable to initialize SDL: %s", SDL_GetError());
+        success= false;
+    }
+
+    if (success)
+    {
+        m_window = SDL_CreateWindow("PSMove Coregistration",
+            SDL_WINDOWPOS_CENTERED,
+            SDL_WINDOWPOS_CENTERED,
+            640, 480,
+            SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
+        if (m_window == NULL) 
+        {
+            Log_ERROR("Renderer::init", "Unable to initialize window: %s", SDL_GetError());
+            success= false;
+        }
+    }
+
+    if (success)
+    {
+        m_glContext = SDL_GL_CreateContext(m_window);
+        if (m_glContext == NULL) 
+        {
+            Log_ERROR("Renderer::init", "Unable to initialize window: %s", SDL_GetError());
+            success= false;
+        }
+    }
+
+    if (success)
+    {
+        glClearColor(7.f/255.f, 34.f/255.f, 66.f/255.f, 1.f);
+        glViewport(0, 0, 640, 480);
+
+        glEnable(GL_LIGHT0);
+        glEnable(GL_DEPTH_TEST);
+    }
+
+    return success;
+}
+
+void Renderer::destroy()
+{
+    if (m_glContext != NULL)
+    {
+        SDL_GL_DeleteContext(m_glContext);
+        m_glContext= NULL;
+    }
+
+    if (m_window != NULL)
+    {
+        SDL_DestroyWindow(m_window);
+        m_window= NULL;
+    }
+
+    if (m_sdlapi_initialized)
+    {
+        SDL_Quit();
+        m_sdlapi_initialized= false;
+    }
+}
+
+void Renderer::render_begin()
+{
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+}
+
+void Renderer::render_end()
+{
+    SDL_GL_SwapWindow(m_window);
+}
+
+int old_main(int arg, char** args) 
+{
 
     // Setup PSMove
     int count = psmove_count_connected();
@@ -322,4 +822,56 @@ int main(int arg, char** args) {
     ovr_Shutdown();
 
     return 0;
+}
+
+//-- helper functions -----
+OVR::Matrix4f getDK2CameraInv44(ovrHmd HMD)
+{
+    ovrTrackingState dk2state;
+    
+    dk2state = ovr_GetTrackingState(HMD, 0.0);
+    OVR::Posef campose(dk2state.CameraPose);
+    campose.Rotation.Normalize();  // Probably does nothing as the SDK returns normalized quats anyway.
+    campose.Translation *= 100.0;  // m -> cm
+    
+    // Print to file - for testing in Matlab
+    char *fpath = psmove_util_get_file_path("output_camerapose.csv");
+    FILE *fp = fopen(fpath, "w");
+    free(fpath);
+    fprintf(fp, "%f, %f, %f, %f, %f, %f, %f\n",
+        campose.Translation.x, campose.Translation.y, campose.Translation.z,
+        campose.Rotation.w, campose.Rotation.x, campose.Rotation.y, campose.Rotation.z);
+    fclose(fp);
+
+    OVR::Matrix4f camMat(campose);
+    
+    printf("Camera pose 4x4:\n");
+    printf("%f, %f, %f, %f\n%f, %f, %f, %f\n%f, %f, %f, %f\n%f, %f, %f, %f\n",
+        camMat.M[0][0], camMat.M[0][1], camMat.M[0][2], camMat.M[0][3],
+        camMat.M[1][0], camMat.M[1][1], camMat.M[1][2], camMat.M[1][3],
+        camMat.M[2][0], camMat.M[2][1], camMat.M[2][2], camMat.M[2][3],
+        camMat.M[3][0], camMat.M[3][1], camMat.M[3][2], camMat.M[3][3]);
+
+    camMat.InvertHomogeneousTransform();
+    printf("Inverted camera pose 4x4:\n");
+    printf("%f, %f, %f, %f\n%f, %f, %f, %f\n%f, %f, %f, %f\n%f, %f, %f, %f\n",
+        camMat.M[0][0], camMat.M[0][1], camMat.M[0][2], camMat.M[0][3],
+        camMat.M[1][0], camMat.M[1][1], camMat.M[1][2], camMat.M[1][3],
+        camMat.M[2][0], camMat.M[2][1], camMat.M[2][2], camMat.M[2][3],
+        camMat.M[3][0], camMat.M[3][1], camMat.M[3][2], camMat.M[3][3]);
+
+    return camMat;
+}
+
+void ovrmat2eigmat(OVR::Matrix4f& in_ovr, Eigen::Matrix4f& in_eig)
+{
+    // The following can probably be done with a simple memcpy but oh well.
+    int row, col;
+    for (row = 0; row < 4; row++)
+    {
+        for (col = 0; col < 4; col++)
+        {
+            in_eig(row, col) = in_ovr.M[row][col];
+        }
+    }
 }
