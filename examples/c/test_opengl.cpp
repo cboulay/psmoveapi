@@ -108,6 +108,8 @@ Tracker::Tracker()
     settings.exposure_mode = Exposure_LOW;
     settings.camera_mirror = PSMove_True;
     settings.use_fitEllipse = 1;
+    settings.color_save_colormapping = PSMove_False;
+    settings.color_list_start_ind = 0;  // Start with magenta if available.
     m_tracker = psmove_tracker_new_with_settings(&settings);
     if (m_tracker == NULL) {
         fprintf(stderr, "No tracker available! (Missing camera?)\n");
