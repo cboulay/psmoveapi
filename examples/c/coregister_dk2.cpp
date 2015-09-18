@@ -21,6 +21,11 @@
 
 #include <Eigen/Dense>
 
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
 //-- macros -----
 #define Log_INFO(section, msg, ...) \
     fprintf(stdout, "INFO [" section "] " msg "\n", ## __VA_ARGS__)
@@ -37,8 +42,28 @@
 #define ovr_Destroy ovrHmd_Destroy
 #endif
 
+//-- predeclarations -----
+class App;
+
 //-- constants -----
 #define NPOSES 300
+#define METERS_TO_CENTIMETERS 100
+
+static const float k_camera_vfov= 35.f;
+static const float k_camera_aspect= 1.f;
+static const float k_camera_z_near= 0.1f;
+static const float k_camera_z_far= 5000.f;
+
+static const float k_camera_mouse_zoom_scalar= 50.f;
+static const float k_camera_mouse_pan_scalar= 0.5f;
+
+enum eAppStageType
+{
+    _appStageNone,
+    _appStageSetup,
+    _appStageComputeCoreg,
+    _appStateTestCoreg
+};
 
 //-- definitions -----
 class PSMoveContext 
@@ -62,6 +87,14 @@ private:
     unsigned int m_buttons_released;
 };
 
+struct DK2TrackingCameraFrustum
+{
+    glm::vec3 origin;
+    glm::vec3 forward, left, up;
+    float HFOV, VFOV;
+    float zNear, zFar;
+};
+
 class DK2Context 
 {
 public:
@@ -72,9 +105,12 @@ public:
     void destroy();
     void update();
 
+    void getTrackingCameraFrustum(DK2TrackingCameraFrustum &frustum);
+
 private:
     bool m_oculusapi_initialized;
     ovrHmd m_HMD;
+    ovrHmdDesc m_HMDDesc;
     ovrTrackingState m_dk2state;
     OVR::Posef m_dk2pose;               // The DK2 pose
     OVR::Matrix4f m_dk2mat;             // The DK2 HMD pose in 4x4
@@ -92,13 +128,96 @@ public:
     bool init();
     void destroy();
 
-    void render_begin();
-    void render_end();
+    void renderBegin();
+    void renderEnd();
+
+    void setProjectionMatrix(const glm::mat4 &matrix)
+    { m_projectionMatrix= matrix; }
+    void setCameraViewMatrix(const glm::mat4 &matrix)
+    { m_cameraViewMatrix= matrix; }
 
 private:
     bool m_sdlapi_initialized;
     SDL_Window *m_window;
     SDL_GLContext m_glContext;
+    glm::mat4 m_projectionMatrix;
+    glm::mat4 m_cameraViewMatrix;
+};
+
+class AppStage
+{
+public:
+    AppStage(App *app) 
+        : m_app(app)
+    { }
+
+    virtual void onMouseMotion(int deltaX, int deltaY) {}
+    virtual void onMouseButtonDown(int buttonIndex) {}
+    virtual void onMouseButtonUp(int buttonIndex) {}
+    virtual void onMouseWheel(int scrollAmount) {}
+
+    virtual void enter() {}
+    virtual void exit() {}
+    virtual void update() {}
+    virtual void render() = 0;
+
+protected:
+    App *m_app;
+};
+
+class SetupStage : public AppStage
+{
+public:
+    SetupStage(App *app) 
+        : AppStage(app)
+        , m_isPanningOrbitCamera(false)
+        , m_cameraOrbitYawDegrees(0.f)
+        , m_cameraOrbitPitchDegrees(0.f)
+        , m_cameraOrbitRadius(100.f)
+        , m_cameraPosition(0.f, 0.f, 100.f)
+    { }
+
+    virtual void onMouseMotion(int deltaX, int deltaY);
+    virtual void onMouseButtonDown(int buttonIndex);
+    virtual void onMouseButtonUp(int buttonIndex);
+    virtual void onMouseWheel(int scrollAmount);
+
+    virtual void enter();
+    virtual void exit();
+    virtual void update();
+    virtual void render();
+
+protected:
+    void setCameraOrbitLocation(float yawDegrees, float pitchDegrees, float radius);
+
+protected:
+    bool m_isPanningOrbitCamera;
+    float m_cameraOrbitYawDegrees;
+    float m_cameraOrbitPitchDegrees;
+    float m_cameraOrbitRadius;
+    glm::vec3 m_cameraPosition;
+};
+
+class ComputeCoregistrationStage : public AppStage
+{
+public:
+    ComputeCoregistrationStage(App *app)
+        : AppStage(app)
+    { }
+
+    virtual void update();
+    virtual void render();
+};
+
+class TestCoregistrationStage : public AppStage
+{
+public:
+    TestCoregistrationStage(App *app)
+        : AppStage(app)
+    { }
+
+    virtual void update();
+    virtual void render();
 };
 
 class App
@@ -106,23 +225,46 @@ class App
 public:
     App();
 
+    Renderer *getRenderer()
+    { return &m_renderer; }
+    DK2Context *getDK2Context()
+    { return &m_dk2_context; }
+    PSMoveContext *getPSMoveContext()
+    { return &m_psmove_context; }
+
     int exec(int argc, char** argv);
 
 protected:
     bool init(int argc, char** argv);
     void destroy();
+    
+    void onSDLEvent(const SDL_Event &e);
     void update();
     void render();
 
+    void setAppStage(eAppStageType appStageType);
+
 private:
+    // Contexts
     PSMoveContext m_psmove_context;
     DK2Context m_dk2_context;
     Renderer m_renderer;
+
+    // App Stages
+    eAppStageType m_appStageType;
+    AppStage *m_appStage;
+    SetupStage m_setupStage;
+    ComputeCoregistrationStage m_computeCoregistrationStage;
+    TestCoregistrationStage m_testCoregistrationStage;
 };
 
 //-- prototypes -----
 OVR::Matrix4f getDK2CameraInv44(ovrHmd HMD);
-void ovrmat2eigmat(OVR::Matrix4f& in_ovr, Eigen::Matrix4f& in_eig);
+void ovrMatrix4fToEigenMatrix4f(const OVR::Matrix4f& in_ovr, Eigen::Matrix4f& in_eig);
+glm::vec3 ovrVector3fToGlmVec3(const OVR::Vector3f &v);
+
+void drawOriginAxes(float scale);
+void drawDK2Frustum(DK2TrackingCameraFrustum &frustum);
 
 //-- entry point -----
 extern "C" int main(int argc, char *argv[])
@@ -139,6 +281,11 @@ App::App()
     : m_psmove_context()
     , m_dk2_context()
     , m_renderer()
+    , m_appStageType(_appStageSetup)
+    , m_appStage(NULL)
+    , m_setupStage(this)
+    , m_computeCoregistrationStage(this)
+    , m_testCoregistrationStage(this)
 {
 }
 
@@ -165,15 +312,76 @@ App::init(int argc, char** argv)
         success= false;
     }
 
+    if (success)
+    {
+        setAppStage(_appStageSetup);
+    }
+
     return success;
+}
+
+void 
+App::setAppStage(eAppStageType appStageType)
+{
+    if (m_appStage != NULL)
+    {
+        m_appStage->exit();
+    }
+
+    switch (appStageType)
+    {
+    case _appStageNone:
+        m_appStage= NULL;
+        break;
+    case _appStageSetup:
+        m_appStage = &m_setupStage;
+        break;
+    case _appStageComputeCoreg:
+        m_appStage = &m_computeCoregistrationStage;
+        break;
+    case _appStateTestCoreg:
+        m_appStage = &m_testCoregistrationStage;
+        break;
+    }
+
+    m_appStageType= appStageType;
+
+    if (m_appStage != NULL)
+    {
+        m_appStage->enter();
+    }
 }
 
 void
 App::destroy()
 {
+    setAppStage(_appStageNone);
     m_psmove_context.destroy();
     m_dk2_context.destroy();
     m_renderer.destroy();
+}
+
+void
+App::onSDLEvent(const SDL_Event &e)
+{
+    if (m_appStage != NULL)
+    {
+        switch(e.type)
+        {
+        case SDL_MOUSEMOTION:
+            m_appStage->onMouseMotion((int)e.motion.xrel, (int)e.motion.yrel);
+            break;
+        case SDL_MOUSEBUTTONDOWN:
+            m_appStage->onMouseButtonDown((int)e.button.button);
+            break;
+        case SDL_MOUSEBUTTONUP:
+            m_appStage->onMouseButtonUp((int)e.button.button);
+            break;
+        case SDL_MOUSEWHEEL:
+            m_appStage->onMouseWheel((int)e.wheel.y);
+            break;
+        }
+    }
 }
 
 void
@@ -181,14 +389,24 @@ App::update()
 {
     m_psmove_context.update();
     m_dk2_context.update();
+
+    if (m_appStage != NULL)
+    {
+        m_appStage->update();
+    }
 }
 
 void
 App::render()
 {
-    m_renderer.render_begin();
-    //TODO: Render the current calibration stage
-    m_renderer.render_end();
+    m_renderer.renderBegin();
+    
+    if (m_appStage != NULL)
+    {
+        m_appStage->render();
+    }
+
+    m_renderer.renderEnd();
 }
 
 int
@@ -209,6 +427,10 @@ App::exec(int argc, char** argv)
                     Log_INFO("App::exec", "QUIT message received");
                     break;
                 }
+                else 
+                {
+                    onSDLEvent(e);
+                }
             }
 
             update();
@@ -224,6 +446,118 @@ App::exec(int argc, char** argv)
     destroy();
 
     return result;
+}
+
+//-- AppStage : IntroState -----
+void SetupStage::onMouseMotion(int deltaX, int deltaY)
+{
+    if (m_isPanningOrbitCamera)
+    {
+        const float deltaYaw= -(float)deltaX * k_camera_mouse_pan_scalar;
+        const float deltaPitch= (float)deltaY * k_camera_mouse_pan_scalar;
+
+        setCameraOrbitLocation(
+            m_cameraOrbitYawDegrees+deltaYaw, 
+            m_cameraOrbitPitchDegrees+deltaPitch, 
+            m_cameraOrbitRadius);
+    }
+}
+
+void SetupStage::onMouseButtonDown(int buttonIndex)
+{
+    if (buttonIndex == SDL_BUTTON_LEFT)
+    {
+        m_isPanningOrbitCamera= true;
+    }
+}
+
+void SetupStage::onMouseButtonUp(int buttonIndex)
+{
+    if (buttonIndex == SDL_BUTTON_LEFT)
+    {
+        m_isPanningOrbitCamera= false;
+    }
+}
+
+void SetupStage::onMouseWheel(int scrollAmount)
+{
+    const float deltaRadius= (float)scrollAmount * k_camera_mouse_zoom_scalar;
+
+    setCameraOrbitLocation(
+        m_cameraOrbitYawDegrees, 
+        m_cameraOrbitPitchDegrees, 
+        m_cameraOrbitRadius+deltaRadius);
+}
+
+void SetupStage::enter()
+{
+    Renderer *renderer= m_app->getRenderer();    
+
+    renderer->setProjectionMatrix(
+        glm::perspective(k_camera_vfov, k_camera_aspect, k_camera_z_near, k_camera_z_far));
+
+    setCameraOrbitLocation(-45.f, 0.f, 1000.f); // degrees, degrees, cm
+}
+
+void SetupStage::exit()
+{
+}
+
+void SetupStage::update()
+{
+}
+
+void SetupStage::render()
+{
+    DK2Context *dk2Context= m_app->getDK2Context();
+    DK2TrackingCameraFrustum frustum;
+
+    dk2Context->getTrackingCameraFrustum(frustum);
+    drawDK2Frustum(frustum);
+    drawOriginAxes(100.f);
+}
+
+void SetupStage::setCameraOrbitLocation(float yawDegrees, float pitchDegrees, float radius)
+{
+    Renderer *renderer= m_app->getRenderer();
+
+    m_cameraOrbitYawDegrees= fmodf(yawDegrees + 360.f, 360.f);
+    m_cameraOrbitPitchDegrees= OVR::OVRMath_Max(OVR::OVRMath_Min(pitchDegrees, 60.f), 0.f);
+    m_cameraOrbitRadius= OVR::OVRMath_Max(radius, 450.f);
+
+    const float yawRadians= OVR::DegreeToRad(m_cameraOrbitYawDegrees);
+    const float pitchRadians= OVR::DegreeToRad(m_cameraOrbitPitchDegrees);
+    const float xzRadiusAtPitch= m_cameraOrbitRadius*cosf(pitchRadians);
+
+    m_cameraPosition= glm::vec3(
+        xzRadiusAtPitch*sinf(yawRadians),
+        m_cameraOrbitRadius*sinf(pitchRadians),
+        xzRadiusAtPitch*cosf(yawRadians));
+
+    renderer->setCameraViewMatrix(
+        glm::lookAt(
+            m_cameraPosition,
+            glm::vec3(0, 0, 0), // Look at tracking origin
+            glm::vec3(0, 1, 0)));    // Up is up.
+}
+
+//-- AppStage : ComputeCoregistrationStage -----
+void ComputeCoregistrationStage::update()
+{
+}
+
+void ComputeCoregistrationStage::render()
+{
+    
+}
+
+//-- AppStage : TestCoregistrationStage -----
+void TestCoregistrationStage::update()
+{
+}
+
+void TestCoregistrationStage::render()
+{
 }
 
 //-- PSMoveContext -----
@@ -450,6 +784,11 @@ bool DK2Context::init()
         success = false;
     }
 
+    if (success)
+    {
+        m_HMDDesc= ovr_GetHmdDesc(m_HMD);
+    }
+
     return success;
 }
 
@@ -474,7 +813,27 @@ void DK2Context::update()
     m_dk2state = ovr_GetTrackingState(m_HMD, 0.0);
     m_dk2pose = m_dk2state.HeadPose.ThePose;
     m_dk2pose.Rotation.Normalize();
-    m_dk2pose.Translation *= 100.0;
+    m_dk2pose.Translation *= METERS_TO_CENTIMETERS;
+}
+
+void DK2Context::getTrackingCameraFrustum(
+    DK2TrackingCameraFrustum &frustum)
+{
+    ovrPosef &cameraPose= m_dk2state.CameraPose;
+    ovrQuatf &q= m_dk2state.CameraPose.Orientation;
+    OVR::Matrix3f cameraMatrix(OVR::Quatf(q.x, q.y, q.z, q.w));
+
+    frustum.origin= ovrVector3fToGlmVec3(cameraPose.Position);
+    frustum.origin*= METERS_TO_CENTIMETERS;
+
+    frustum.forward= ovrVector3fToGlmVec3(cameraMatrix.Col(OVR::Axis_Z));
+    frustum.left= ovrVector3fToGlmVec3(cameraMatrix.Col(OVR::Axis_X));
+    frustum.up= ovrVector3fToGlmVec3(cameraMatrix.Col(OVR::Axis_Y));
+
+    frustum.HFOV= m_HMDDesc.CameraFrustumHFovInRadians;
+    frustum.VFOV= m_HMDDesc.CameraFrustumVFovInRadians;
+    frustum.zNear= m_HMDDesc.CameraFrustumNearZInMeters*METERS_TO_CENTIMETERS;
+    frustum.zFar= m_HMDDesc.CameraFrustumFarZInMeters*METERS_TO_CENTIMETERS;
 }
 
 //-- Renderer -----
@@ -482,6 +841,8 @@ Renderer::Renderer()
     : m_sdlapi_initialized(false)
     , m_window(NULL)
     , m_glContext(NULL)
+    , m_projectionMatrix()
+    , m_cameraViewMatrix()
 {
 }
 
@@ -563,12 +924,18 @@ void Renderer::destroy()
     }
 }
 
-void Renderer::render_begin()
+void Renderer::renderBegin()
 {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    glMatrixMode(GL_PROJECTION);
+    glLoadMatrixf(glm::value_ptr(m_projectionMatrix));
+
+    glMatrixMode(GL_MODELVIEW);
+    glLoadMatrixf(glm::value_ptr(m_cameraViewMatrix));
 }
 
-void Renderer::render_end()
+void Renderer::renderEnd()
 {
     SDL_GL_SwapWindow(m_window);
 }
@@ -724,7 +1091,7 @@ int old_main(int arg, char** args)
             }
             */
 
-            ovrmat2eigmat(dk2mat, dk2eig);
+            ovrMatrix4fToEigenMatrix4f(dk2mat, dk2eig);
             RMi = dk2eig.topLeftCorner(3, 3).transpose();           // inner 33 transposed
 
             /*
@@ -824,7 +1191,81 @@ int old_main(int arg, char** args)
     return 0;
 }
 
-//-- helper functions -----
+//-- debug render helper functions -----
+void drawDK2Frustum(DK2TrackingCameraFrustum &frustum)
+{
+    const float HRatio= tanf(frustum.HFOV/2.f);
+    const float VRatio= tanf(frustum.VFOV/2.f);
+
+    glm::vec3 nearX= frustum.left*frustum.zNear*HRatio;
+    glm::vec3 farX= frustum.left*frustum.zFar*HRatio;
+
+    glm::vec3 nearY= frustum.up*frustum.zNear*VRatio;
+    glm::vec3 farY= frustum.up*frustum.zFar*VRatio;
+
+    glm::vec3 nearZ= frustum.forward*frustum.zNear;
+    glm::vec3 farZ= frustum.forward*frustum.zFar;
+
+    glm::vec3 nearCenter= frustum.origin + nearZ;
+    glm::vec3 near0= frustum.origin + nearX + nearY + nearZ;
+    glm::vec3 near1= frustum.origin - nearX + nearY + nearZ;
+    glm::vec3 near2= frustum.origin - nearX - nearY + nearZ;
+    glm::vec3 near3= frustum.origin + nearX - nearY + nearZ;
+
+    glm::vec3 far0= frustum.origin + farX + farY + farZ;
+    glm::vec3 far1= frustum.origin - farX + farY + farZ;
+    glm::vec3 far2= frustum.origin - farX - farY + farZ;
+    glm::vec3 far3= frustum.origin + farX - farY + farZ;
+    
+    glBegin(GL_LINES);
+
+    glColor3ub(255, 201, 14);
+
+    glVertex3fv(glm::value_ptr(near0)); glVertex3fv(glm::value_ptr(near1));
+    glVertex3fv(glm::value_ptr(near1)); glVertex3fv(glm::value_ptr(near2));
+    glVertex3fv(glm::value_ptr(near2)); glVertex3fv(glm::value_ptr(near3));
+    glVertex3fv(glm::value_ptr(near3)); glVertex3fv(glm::value_ptr(near0));
+
+    glVertex3fv(glm::value_ptr(far0)); glVertex3fv(glm::value_ptr(far1));
+    glVertex3fv(glm::value_ptr(far1)); glVertex3fv(glm::value_ptr(far2));
+    glVertex3fv(glm::value_ptr(far2)); glVertex3fv(glm::value_ptr(far3));
+    glVertex3fv(glm::value_ptr(far3)); glVertex3fv(glm::value_ptr(far0));
+
+    glVertex3fv(glm::value_ptr(frustum.origin)); glVertex3fv(glm::value_ptr(far0));
+    glVertex3fv(glm::value_ptr(frustum.origin)); glVertex3fv(glm::value_ptr(far1));
+    glVertex3fv(glm::value_ptr(frustum.origin)); glVertex3fv(glm::value_ptr(far2));
+    glVertex3fv(glm::value_ptr(frustum.origin)); glVertex3fv(glm::value_ptr(far3));
+
+    glVertex3fv(glm::value_ptr(frustum.origin));
+    glColor3ub(0, 255, 0);
+    glVertex3fv(glm::value_ptr(nearCenter));
+
+    glEnd();
+}
+
+void drawOriginAxes(float scale)
+{
+    glm::vec3 origin(0.f, 0.f, 0.f);
+    glm::vec3 xAxis(scale, 0.f, 0.f);
+    glm::vec3 yAxis(0.f, scale, 0.f);
+    glm::vec3 zAxis(0.f, 0.f, scale);
+   
+    glBegin(GL_LINES);
+
+    glColor3ub(255, 0, 0);
+    glVertex3fv(glm::value_ptr(origin)); glVertex3fv(glm::value_ptr(xAxis));
+
+    glColor3ub(0, 255, 0);
+    glVertex3fv(glm::value_ptr(origin)); glVertex3fv(glm::value_ptr(yAxis));
+
+    glColor3ub(0, 0, 255);
+    glVertex3fv(glm::value_ptr(origin)); glVertex3fv(glm::value_ptr(zAxis));
+
+    glEnd();
+}
+
+
+//-- math helper functions -----
 OVR::Matrix4f getDK2CameraInv44(ovrHmd HMD)
 {
     ovrTrackingState dk2state;
@@ -863,7 +1304,7 @@ OVR::Matrix4f getDK2CameraInv44(ovrHmd HMD)
     return camMat;
 }
 
-void ovrmat2eigmat(OVR::Matrix4f& in_ovr, Eigen::Matrix4f& in_eig)
+void ovrMatrix4fToEigenMatrix4f(const OVR::Matrix4f& in_ovr, Eigen::Matrix4f& in_eig)
 {
     // The following can probably be done with a simple memcpy but oh well.
     int row, col;
@@ -874,4 +1315,9 @@ void ovrmat2eigmat(OVR::Matrix4f& in_ovr, Eigen::Matrix4f& in_eig)
             in_eig(row, col) = in_ovr.M[row][col];
         }
     }
+}
+
+glm::vec3 ovrVector3fToGlmVec3(const OVR::Vector3f &v)
+{
+    return glm::vec3(v.x, v.y, v.z);
 }
