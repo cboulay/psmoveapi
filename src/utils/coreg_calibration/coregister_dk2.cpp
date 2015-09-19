@@ -3,21 +3,30 @@
 #include <stdlib.h> // calloc, free
 #include <assert.h>
 
-
 #ifdef _WIN32
 #include <windows.h>
 #else
 #include <unistd.h>
 #endif
 
-#include "psmove_examples_opengl.h"
+#include "SDL.h"
+#include "SDL_opengl.h"
+//#ifdef __APPLE__
+//    #include <OpenGL/gl.h>
+//    #include <GLUT/glut.h>
+//#elif _WIN32
+//    #include <GL/gl.h>
+//	#include <GL/glu.h>
+//#else
+//    #include <GL/gl.h>
+//    #include <GL/glut.h>
+//#endif
+
 #include "psmove.h"
 #include "psmove_tracker.h"
 
 #include "OVR_CAPI.h"
 #include "Extras/OVR_Math.h"
-
-#include "DK2_3dmodel.h"
 
 #include <Eigen/Dense>
 
@@ -25,6 +34,17 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtc/type_ptr.hpp>
+
+#include "dk2_3dmodel.h"
+
+#ifdef _WIN32
+    #pragma comment (lib, "winmm.lib")     /* link with Windows MultiMedia lib */
+    #pragma comment (lib, "opengl32.lib")  /* link with Microsoft OpenGL lib */
+    #pragma comment (lib, "glu32.lib")     /* link with OpenGL Utility lib */
+
+    #pragma warning (disable:4244)	/* Disable bogus conversion warnings. */
+    #pragma warning (disable:4305)  /* VC++ 5.0 version of above warning. */
+#endif
 
 //-- macros -----
 #define Log_INFO(section, msg, ...) \
@@ -44,6 +64,7 @@
 
 //-- predeclarations -----
 class App;
+class AssetManager;
 
 //-- constants -----
 #define NPOSES 300
@@ -56,6 +77,9 @@ static const float k_camera_z_far= 5000.f;
 
 static const float k_camera_mouse_zoom_scalar= 50.f;
 static const float k_camera_mouse_pan_scalar= 0.5f;
+static const float k_camera_min_zoom= 100.f;
+
+static const char *k_dk2_texture_filename= "./assets/textures/DK2diffuse.bmp";
 
 enum eAppStageType
 {
@@ -105,7 +129,8 @@ public:
     void destroy();
     void update();
 
-    void getTrackingCameraFrustum(DK2TrackingCameraFrustum &frustum);
+    void getTrackingCameraFrustum(DK2TrackingCameraFrustum &frustum) const;
+    glm::mat4 getHMDTransform() const;
 
 private:
     bool m_oculusapi_initialized;
@@ -143,6 +168,30 @@ private:
     glm::mat4 m_projectionMatrix;
     glm::mat4 m_cameraViewMatrix;
 };
+
+class AssetManager
+{
+public:
+    AssetManager();
+    ~AssetManager();
+
+    bool init();
+    void destroy();
+
+    static AssetManager *getInstance()
+    { return m_instance; }
+
+    GLuint getDK2TextureId()
+    { return m_dk2TextureId; }
+
+private:
+    bool loadTexture(const char *filename, GLuint *textureId);
+
+    GLuint m_dk2TextureId;
+
+    static AssetManager *m_instance;
+};
+AssetManager *AssetManager::m_instance= NULL;
 
 class AppStage
 {
@@ -228,9 +277,11 @@ public:
     Renderer *getRenderer()
     { return &m_renderer; }
     DK2Context *getDK2Context()
-    { return &m_dk2_context; }
+    { return &m_dk2Context; }
     PSMoveContext *getPSMoveContext()
-    { return &m_psmove_context; }
+    { return &m_psmoveContext; }
+    AssetManager *getAssetManager()
+    { return &m_assetManager; }
 
     int exec(int argc, char** argv);
 
@@ -246,9 +297,10 @@ protected:
 
 private:
     // Contexts
-    PSMoveContext m_psmove_context;
-    DK2Context m_dk2_context;
+    PSMoveContext m_psmoveContext;
+    DK2Context m_dk2Context;
     Renderer m_renderer;
+    AssetManager m_assetManager;
 
     // App Stages
     eAppStageType m_appStageType;
@@ -261,10 +313,14 @@ private:
 //-- prototypes -----
 OVR::Matrix4f getDK2CameraInv44(ovrHmd HMD);
 void ovrMatrix4fToEigenMatrix4f(const OVR::Matrix4f& in_ovr, Eigen::Matrix4f& in_eig);
+glm::mat4 ovrMatrix4fToGlmMat4(const OVR::Matrix4f& ovr_mat4);
 glm::vec3 ovrVector3fToGlmVec3(const OVR::Vector3f &v);
 
-void drawOriginAxes(float scale);
+void drawTransformedAxes(const glm::mat4 &transform, float scale);
+void drawTransformedBox(const glm::mat4 &transform, const glm::vec3 &half_extents, const glm::vec3 &color);
+void drawTransformedTexturedCube(const glm::mat4 &transform, int textureId, float scale);
 void drawDK2Frustum(DK2TrackingCameraFrustum &frustum);
+void drawDK2Model(const glm::mat4 &transform);
 
 //-- entry point -----
 extern "C" int main(int argc, char *argv[])
@@ -278,9 +334,10 @@ extern "C" int main(int argc, char *argv[])
 
 //-- App --
 App::App()
-    : m_psmove_context()
-    , m_dk2_context()
+    : m_psmoveContext()
+    , m_dk2Context()
     , m_renderer()
+    , m_assetManager()
     , m_appStageType(_appStageSetup)
     , m_appStage(NULL)
     , m_setupStage(this)
@@ -300,17 +357,23 @@ App::init(int argc, char** argv)
         success= false;
     }
 
-    if (success && !m_dk2_context.init())
+    if (success && !m_assetManager.init())
+    {
+        Log_ERROR("App::init", "Failed to initialize asset manager!");
+        success= false;
+    }
+
+    if (success && !m_dk2Context.init())
     {
         Log_ERROR("App::init", "Failed to initialize Oculus tracking context!");
         success= false;
     }
 
-    if (success && !m_psmove_context.init(argc, argv))
-    {
-        Log_ERROR("App::init", "Failed to initialize PSMove tracking context!");
-        success= false;
-    }
+    //if (success && !m_psmoveContext.init(argc, argv))
+    //{
+    //    Log_ERROR("App::init", "Failed to initialize PSMove tracking context!");
+    //    success= false;
+    //}
 
     if (success)
     {
@@ -356,8 +419,9 @@ void
 App::destroy()
 {
     setAppStage(_appStageNone);
-    m_psmove_context.destroy();
-    m_dk2_context.destroy();
+    m_psmoveContext.destroy();
+    m_dk2Context.destroy();
+    m_assetManager.destroy();
     m_renderer.destroy();
 }
 
@@ -387,8 +451,8 @@ App::onSDLEvent(const SDL_Event &e)
 void
 App::update()
 {
-    m_psmove_context.update();
-    m_dk2_context.update();
+    //m_psmoveContext.update();
+    m_dk2Context.update();
 
     if (m_appStage != NULL)
     {
@@ -510,11 +574,24 @@ void SetupStage::update()
 void SetupStage::render()
 {
     DK2Context *dk2Context= m_app->getDK2Context();
-    DK2TrackingCameraFrustum frustum;
 
-    dk2Context->getTrackingCameraFrustum(frustum);
-    drawDK2Frustum(frustum);
-    drawOriginAxes(100.f);
+    drawTransformedAxes(glm::mat4(1.0f), 100.f);
+
+    {
+        DK2TrackingCameraFrustum frustum;
+
+        dk2Context->getTrackingCameraFrustum(frustum);
+        drawDK2Frustum(frustum);
+    }
+    
+    {
+        glm::mat4 transform= dk2Context->getHMDTransform();
+
+        drawDK2Model(transform);
+
+        drawTransformedAxes(transform, 10.f);
+        //drawTransformedBox(transform, glm::vec3(9.f, 4.5f, 6.5f), glm::vec3(1.f, 0.f, 0.f));
+    }
 }
 
 void SetupStage::setCameraOrbitLocation(float yawDegrees, float pitchDegrees, float radius)
@@ -523,7 +600,7 @@ void SetupStage::setCameraOrbitLocation(float yawDegrees, float pitchDegrees, fl
 
     m_cameraOrbitYawDegrees= fmodf(yawDegrees + 360.f, 360.f);
     m_cameraOrbitPitchDegrees= OVR::OVRMath_Max(OVR::OVRMath_Min(pitchDegrees, 60.f), 0.f);
-    m_cameraOrbitRadius= OVR::OVRMath_Max(radius, 450.f);
+    m_cameraOrbitRadius= OVR::OVRMath_Max(radius, k_camera_min_zoom);
 
     const float yawRadians= OVR::DegreeToRad(m_cameraOrbitYawDegrees);
     const float pitchRadians= OVR::DegreeToRad(m_cameraOrbitPitchDegrees);
@@ -813,14 +890,15 @@ void DK2Context::update()
     m_dk2state = ovr_GetTrackingState(m_HMD, 0.0);
     m_dk2pose = m_dk2state.HeadPose.ThePose;
     m_dk2pose.Rotation.Normalize();
-    m_dk2pose.Translation *= METERS_TO_CENTIMETERS;
+    m_dk2pose.Translation *= METERS_TO_CENTIMETERS;    
+    m_dk2mat= OVR::Matrix4f(m_dk2pose);
 }
 
 void DK2Context::getTrackingCameraFrustum(
-    DK2TrackingCameraFrustum &frustum)
+    DK2TrackingCameraFrustum &frustum) const
 {
-    ovrPosef &cameraPose= m_dk2state.CameraPose;
-    ovrQuatf &q= m_dk2state.CameraPose.Orientation;
+    const ovrPosef &cameraPose= m_dk2state.CameraPose;
+    const ovrQuatf &q= m_dk2state.CameraPose.Orientation;
     OVR::Matrix3f cameraMatrix(OVR::Quatf(q.x, q.y, q.z, q.w));
 
     frustum.origin= ovrVector3fToGlmVec3(cameraPose.Position);
@@ -834,6 +912,11 @@ void DK2Context::getTrackingCameraFrustum(
     frustum.VFOV= m_HMDDesc.CameraFrustumVFovInRadians;
     frustum.zNear= m_HMDDesc.CameraFrustumNearZInMeters*METERS_TO_CENTIMETERS;
     frustum.zFar= m_HMDDesc.CameraFrustumFarZInMeters*METERS_TO_CENTIMETERS;
+}
+
+glm::mat4 DK2Context::getHMDTransform() const
+{
+    return ovrMatrix4fToGlmMat4(m_dk2mat);
 }
 
 //-- Renderer -----
@@ -897,7 +980,12 @@ bool Renderer::init()
         glViewport(0, 0, 640, 480);
 
         glEnable(GL_LIGHT0);
+        glEnable(GL_TEXTURE_2D);
+        //glShadeModel(GL_SMOOTH);
+        //glClearDepth(1.0f);
         glEnable(GL_DEPTH_TEST);
+        //glDepthFunc(GL_LEQUAL);
+        //glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST);
     }
 
     return success;
@@ -938,6 +1026,96 @@ void Renderer::renderBegin()
 void Renderer::renderEnd()
 {
     SDL_GL_SwapWindow(m_window);
+}
+
+//-- AssetManager -----
+AssetManager::AssetManager()
+    : m_dk2TextureId(-1)
+{
+}
+
+AssetManager::~AssetManager()
+{
+    assert(m_instance== NULL);
+}
+
+bool AssetManager::init()
+{
+    bool success= true;
+
+    if (success)
+    {
+        success= loadTexture(k_dk2_texture_filename, &m_dk2TextureId);
+    }
+
+    if (success)
+    {
+        m_instance= this;
+    }
+
+    return success;
+}
+
+void AssetManager::destroy()
+{
+    if (m_dk2TextureId != -1)
+    {
+        glDeleteTextures(1, &m_dk2TextureId);
+        m_dk2TextureId= -1;
+    }
+
+    m_instance= NULL;
+}
+
+bool AssetManager::loadTexture(const char *filename, GLuint *textureId)
+{
+    bool success= false;
+    SDL_Surface* surface = SDL_LoadBMP(filename);
+
+    if (surface != NULL)
+    {
+        GLint glPixelFormat= -1;
+
+        switch (surface->format->format)
+        {
+        case SDL_PIXELFORMAT_RGB24:
+             glPixelFormat= GL_RGB;
+            break;
+        case SDL_PIXELFORMAT_BGR24:
+             glPixelFormat= GL_BGR;
+            break;
+        }
+
+        if (glPixelFormat != -1)
+        {
+            SDL_UnlockSurface(surface);            
+
+            glGenTextures(1, textureId);
+
+            // Typical Texture Generation Using Data From The Bitmap
+            glBindTexture(GL_TEXTURE_2D, *textureId);
+            glTexImage2D(GL_TEXTURE_2D, 0, 3, surface->w, surface->h, 0, glPixelFormat, GL_UNSIGNED_BYTE, surface->pixels);
+            glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
+
+            SDL_LockSurface(surface);
+
+            success= true;
+        }
+        else
+        {
+            Log_ERROR("AssetManager::loadTexture", "Image isn't RGB24 or BGR24 pixel format!");
+        }
+
+        SDL_FreeSurface(surface);
+        surface= NULL;
+    }
+    else
+    {
+        Log_ERROR("AssetManager::loadTexture", "Failed to load: %s(%s)", filename, SDL_GetError());
+    }
+
+    return success;
 }
 
 int old_main(int arg, char** args) 
@@ -1243,27 +1421,130 @@ void drawDK2Frustum(DK2TrackingCameraFrustum &frustum)
     glEnd();
 }
 
-void drawOriginAxes(float scale)
+void drawTransformedAxes(const glm::mat4 &transform, float scale)
 {
     glm::vec3 origin(0.f, 0.f, 0.f);
     glm::vec3 xAxis(scale, 0.f, 0.f);
     glm::vec3 yAxis(0.f, scale, 0.f);
     glm::vec3 zAxis(0.f, 0.f, scale);
    
-    glBegin(GL_LINES);
+    glPushMatrix();
+        glMultMatrixf(glm::value_ptr(transform));
+        glBegin(GL_LINES);
 
-    glColor3ub(255, 0, 0);
-    glVertex3fv(glm::value_ptr(origin)); glVertex3fv(glm::value_ptr(xAxis));
+        glColor3ub(255, 0, 0);
+        glVertex3fv(glm::value_ptr(origin)); glVertex3fv(glm::value_ptr(xAxis));
 
-    glColor3ub(0, 255, 0);
-    glVertex3fv(glm::value_ptr(origin)); glVertex3fv(glm::value_ptr(yAxis));
+        glColor3ub(0, 255, 0);
+        glVertex3fv(glm::value_ptr(origin)); glVertex3fv(glm::value_ptr(yAxis));
 
-    glColor3ub(0, 0, 255);
-    glVertex3fv(glm::value_ptr(origin)); glVertex3fv(glm::value_ptr(zAxis));
+        glColor3ub(0, 0, 255);
+        glVertex3fv(glm::value_ptr(origin)); glVertex3fv(glm::value_ptr(zAxis));
 
-    glEnd();
+        glEnd();
+    glPopMatrix();
 }
 
+void drawTransformedBox(const glm::mat4 &transform, const glm::vec3 &half_extents, const glm::vec3 &color)
+{
+    glm::vec3 v0(half_extents.x, half_extents.y, half_extents.z);
+    glm::vec3 v1(-half_extents.x, half_extents.y, half_extents.z);
+    glm::vec3 v2(-half_extents.x, half_extents.y, -half_extents.z);
+    glm::vec3 v3(half_extents.x, half_extents.y, -half_extents.z);
+    glm::vec3 v4(half_extents.x, -half_extents.y, half_extents.z);
+    glm::vec3 v5(-half_extents.x, -half_extents.y, half_extents.z);
+    glm::vec3 v6(-half_extents.x, -half_extents.y, -half_extents.z);
+    glm::vec3 v7(half_extents.x, -half_extents.y, -half_extents.z);
+
+    glPushMatrix();
+        glMultMatrixf(glm::value_ptr(transform));
+        glColor3fv(glm::value_ptr(color));
+
+        glBegin(GL_LINES);
+
+        glVertex3fv(glm::value_ptr(v0)); glVertex3fv(glm::value_ptr(v1));
+        glVertex3fv(glm::value_ptr(v1)); glVertex3fv(glm::value_ptr(v2));
+        glVertex3fv(glm::value_ptr(v2)); glVertex3fv(glm::value_ptr(v3));
+        glVertex3fv(glm::value_ptr(v3)); glVertex3fv(glm::value_ptr(v0));
+
+        glVertex3fv(glm::value_ptr(v4)); glVertex3fv(glm::value_ptr(v5));
+        glVertex3fv(glm::value_ptr(v5)); glVertex3fv(glm::value_ptr(v6));
+        glVertex3fv(glm::value_ptr(v6)); glVertex3fv(glm::value_ptr(v7));
+        glVertex3fv(glm::value_ptr(v7)); glVertex3fv(glm::value_ptr(v4));
+
+        glVertex3fv(glm::value_ptr(v0)); glVertex3fv(glm::value_ptr(v4));
+        glVertex3fv(glm::value_ptr(v1)); glVertex3fv(glm::value_ptr(v5));
+        glVertex3fv(glm::value_ptr(v2)); glVertex3fv(glm::value_ptr(v6));
+        glVertex3fv(glm::value_ptr(v3)); glVertex3fv(glm::value_ptr(v7));
+
+        glEnd();
+    glPopMatrix();
+}
+
+void drawTransformedTexturedCube(const glm::mat4 &transform, int textureId, float scale)
+{
+    glBindTexture(GL_TEXTURE_2D, textureId);
+    glColor3f(1.f, 1.f, 1.f);
+
+    glBegin(GL_QUADS);
+        glMultMatrixf(glm::value_ptr(transform));
+        // Front Face
+        glTexCoord2f(0.0f, 0.0f); glVertex3f(-scale, -scale,  scale);
+        glTexCoord2f(1.0f, 0.0f); glVertex3f( scale, -scale,  scale);
+        glTexCoord2f(1.0f, 1.0f); glVertex3f( scale,  scale,  scale);
+        glTexCoord2f(0.0f, 1.0f); glVertex3f(-scale,  scale,  scale);
+        // Back Face
+        glTexCoord2f(1.0f, 0.0f); glVertex3f(-scale, -scale, -scale);
+        glTexCoord2f(1.0f, 1.0f); glVertex3f(-scale,  scale, -scale);
+        glTexCoord2f(0.0f, 1.0f); glVertex3f( scale,  scale, -scale);
+        glTexCoord2f(0.0f, 0.0f); glVertex3f( scale, -scale, -scale);
+        // Top Face
+        glTexCoord2f(0.0f, 1.0f); glVertex3f(-scale,  scale, -scale);
+        glTexCoord2f(0.0f, 0.0f); glVertex3f(-scale,  scale,  scale);
+        glTexCoord2f(1.0f, 0.0f); glVertex3f( scale,  scale,  scale);
+        glTexCoord2f(1.0f, 1.0f); glVertex3f( scale,  scale, -scale);
+        // Bottom Face
+        glTexCoord2f(1.0f, 1.0f); glVertex3f(-scale, -scale, -scale);
+        glTexCoord2f(0.0f, 1.0f); glVertex3f( scale, -scale, -scale);
+        glTexCoord2f(0.0f, 0.0f); glVertex3f( scale, -scale,  scale);
+        glTexCoord2f(1.0f, 0.0f); glVertex3f(-scale, -scale,  scale);
+        // Right face
+        glTexCoord2f(1.0f, 0.0f); glVertex3f( scale, -scale, -scale);
+        glTexCoord2f(1.0f, 1.0f); glVertex3f( scale,  scale, -scale);
+        glTexCoord2f(0.0f, 1.0f); glVertex3f( scale,  scale,  scale);
+        glTexCoord2f(0.0f, 0.0f); glVertex3f( scale, -scale,  scale);
+        // Left Face
+        glTexCoord2f(0.0f, 0.0f); glVertex3f(-scale, -scale, -scale);
+        glTexCoord2f(1.0f, 0.0f); glVertex3f(-scale, -scale,  scale);
+        glTexCoord2f(1.0f, 1.0f); glVertex3f(-scale,  scale,  scale);
+        glTexCoord2f(0.0f, 1.0f); glVertex3f(-scale,  scale, -scale);
+    glEnd();
+
+    // rebind the default texture
+    glBindTexture(GL_TEXTURE_2D, 0); 
+}
+
+void drawDK2Model(const glm::mat4 &transform)
+{
+    int textureID= AssetManager::getInstance()->getDK2TextureId();
+
+    glBindTexture(GL_TEXTURE_2D, textureID);
+    glColor3f(1.f, 1.f, 1.f);
+
+    glPushMatrix();
+        glMultMatrixf(glm::value_ptr(transform));
+        glEnableClientState(GL_VERTEX_ARRAY);
+        glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+        glVertexPointer(3, GL_FLOAT, 0, DK2Verts);
+        glTexCoordPointer(2, GL_FLOAT, 0, DK2TexCoords);
+        glDrawArrays(GL_TRIANGLES, 0, DK2NumVerts);
+        glDisableClientState(GL_VERTEX_ARRAY);
+        glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+    glPopMatrix();
+
+    // rebind the default texture
+    glBindTexture(GL_TEXTURE_2D, 0); 
+}
 
 //-- math helper functions -----
 OVR::Matrix4f getDK2CameraInv44(ovrHmd HMD)
@@ -1315,6 +1596,14 @@ void ovrMatrix4fToEigenMatrix4f(const OVR::Matrix4f& in_ovr, Eigen::Matrix4f& in
             in_eig(row, col) = in_ovr.M[row][col];
         }
     }
+}
+
+glm::mat4 ovrMatrix4fToGlmMat4(const OVR::Matrix4f& ovr_mat4)
+{
+    // ovr matrices are stored row-major in memory
+    // glm matrices are stored colomn-major in memory
+    // Thus the transpose
+    return glm::transpose(glm::make_mat4((const float *)ovr_mat4.M));
 }
 
 glm::vec3 ovrVector3fToGlmVec3(const OVR::Vector3f &v)
