@@ -47,7 +47,7 @@ Requirements
     Note: OpenCV 2.4.11 is required only for MSVC builds of the psmoveapi; Linux and Mac builds of the psmoveapi require OpenCV 3.
     
 5. SDL2
-    Optional - Only required if you are building the OpenGL examples.
+    Optional - Only required if you are building the OpenGL examples or the coregistration tool.
     Still in `psmoveapi/external`
     `cd SDL2`
     `mkdir build`
@@ -58,7 +58,12 @@ Requirements
     Change the target to Release (at the top of the VS window).
     Build the solution (Press F7).
 
-6. Build psmoveapi
+6. stb - single file, header only game utility library
+    Optional - Only required if you are building the coregistration tool
+    `cd external`
+    `git clone https://github.com/nothings/stb.git`
+    
+7. Build psmoveapi
 
     Still in the VS2013 command prompt:
 
@@ -73,9 +78,9 @@ Requirements
     Build the solution (Press F7).
     You can also build the Debug solution.
     
-7. Read [this Wiki](https://github.com/cboulay/psmove-ue4/wiki) for windows-specific information on pairing and connecting the psmove controller and on using the PS3Eye camera.
+8. Read [this Wiki](https://github.com/cboulay/psmove-ue4/wiki) for windows-specific information on pairing and connecting the psmove controller and on using the PS3Eye camera.
 
-8. Start one of the desired test applications
+9. Start one of the desired test applications
 
     If you previously chose to build the example applications (which is the
     default), you can then run

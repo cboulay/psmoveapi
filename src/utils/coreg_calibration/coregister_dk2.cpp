@@ -11,16 +11,12 @@
 
 #include "SDL.h"
 #include "SDL_opengl.h"
-//#ifdef __APPLE__
-//    #include <OpenGL/gl.h>
-//    #include <GLUT/glut.h>
-//#elif _WIN32
-//    #include <GL/gl.h>
-//	#include <GL/glu.h>
-//#else
-//    #include <GL/gl.h>
-//    #include <GL/glut.h>
-//#endif
+
+#define STB_TRUETYPE_IMPLEMENTATION
+#include "stb_truetype.h"
+#define STB_IMAGE_IMPLEMENTATION
+#define STBI_ONLY_JPEG
+#include "stb_image.h"
 
 #include "psmove.h"
 #include "psmove_tracker.h"
@@ -70,8 +66,13 @@ class AssetManager;
 #define NPOSES 300
 #define METERS_TO_CENTIMETERS 100
 
+static const size_t k_kilo= 1<<10;
+static const size_t k_meg= 1<<20;
+
+static const int k_window_pixel_width= 800;
+static const int k_window_pixel_height= 600;
+
 static const float k_camera_vfov= 35.f;
-static const float k_camera_aspect= 1.f;
 static const float k_camera_z_near= 0.1f;
 static const float k_camera_z_far= 5000.f;
 
@@ -79,7 +80,10 @@ static const float k_camera_mouse_zoom_scalar= 50.f;
 static const float k_camera_mouse_pan_scalar= 0.5f;
 static const float k_camera_min_zoom= 100.f;
 
-static const char *k_dk2_texture_filename= "./assets/textures/DK2diffuse.bmp";
+static const char *k_dk2_texture_filename= "./assets/textures/DK2diffuse.jpg";
+
+static const char *k_default_font_filename= "./assets/fonts/OpenSans-Regular.ttf";
+static const float k_default_font_pixel_height= 32.f;
 
 enum eAppStageType
 {
@@ -154,24 +158,60 @@ public:
     void destroy();
 
     void renderBegin();
+    void renderStageBegin();
+    void renderStageEnd();
+    void renderUIBegin();
+    void renderUIEnd();
     void renderEnd();
+
+    static bool getIsRenderingStage() 
+    { return m_instance != NULL && m_instance->m_isRenderingStage; }
+    static bool getIsRenderingUI()
+    { return m_instance != NULL && m_instance->m_isRenderingUI; }
+    float getWindowAspectRatio() const
+    { return m_windowWidth / m_windowHeight; }
 
     void setProjectionMatrix(const glm::mat4 &matrix)
     { m_projectionMatrix= matrix; }
     void setCameraViewMatrix(const glm::mat4 &matrix)
     { m_cameraViewMatrix= matrix; }
 
+    void renderText(float x, float y, char *text);
+
 private:
     bool m_sdlapi_initialized;
+    
     SDL_Window *m_window;
+    int m_windowWidth, m_windowHeight;
+
     SDL_GLContext m_glContext;
+
     glm::mat4 m_projectionMatrix;
     glm::mat4 m_cameraViewMatrix;
+
+    bool m_isRenderingStage;
+    bool m_isRenderingUI;
+
+    static Renderer *m_instance;
 };
+Renderer *Renderer::m_instance= NULL;
 
 class AssetManager
 {
 public:
+    struct FontAsset
+    {
+        GLuint textureId;
+        int textureWidth, textureHeight;
+        float glyphPixelHeight;
+        stbtt_bakedchar cdata[96]; // ASCII 32..126 is 95 glyphs
+
+        FontAsset()
+        {
+            memset(this, 0, sizeof(FontAsset));
+        }
+    };
+
     AssetManager();
     ~AssetManager();
 
@@ -183,11 +223,18 @@ public:
 
     GLuint getDK2TextureId()
     { return m_dk2TextureId; }
+    const FontAsset *getDefaultFont()
+    { return &m_defaultFont; }
 
 private:
     bool loadTexture(const char *filename, GLuint *textureId);
+    bool loadFont(const char *filename, float pixelHeight, AssetManager::FontAsset *fontAsset);
 
+    // Utility Textures
     GLuint m_dk2TextureId;
+
+    // Font Rendering
+    FontAsset m_defaultFont;
 
     static AssetManager *m_instance;
 };
@@ -209,6 +256,7 @@ public:
     virtual void exit() {}
     virtual void update() {}
     virtual void render() = 0;
+    virtual void renderUI() {}
 
 protected:
     App *m_app;
@@ -235,6 +283,7 @@ public:
     virtual void exit();
     virtual void update();
     virtual void render();
+    virtual void renderUI();
 
 protected:
     void setCameraOrbitLocation(float yawDegrees, float pitchDegrees, float radius);
@@ -312,9 +361,9 @@ private:
 
 //-- prototypes -----
 OVR::Matrix4f getDK2CameraInv44(ovrHmd HMD);
-void ovrMatrix4fToEigenMatrix4f(const OVR::Matrix4f& in_ovr, Eigen::Matrix4f& in_eig);
+void ovrMatrix4ToEigenMatrix4(const OVR::Matrix4f& in_ovr, Eigen::Matrix4f& in_eig);
 glm::mat4 ovrMatrix4fToGlmMat4(const OVR::Matrix4f& ovr_mat4);
-glm::vec3 ovrVector3fToGlmVec3(const OVR::Vector3f &v);
+glm::vec3 ovrVector3ToGlmVec3(const OVR::Vector3f &v);
 
 void drawTransformedAxes(const glm::mat4 &transform, float scale);
 void drawTransformedBox(const glm::mat4 &transform, const glm::vec3 &half_extents, const glm::vec3 &color);
@@ -464,11 +513,20 @@ void
 App::render()
 {
     m_renderer.renderBegin();
-    
+
+    m_renderer.renderStageBegin();
     if (m_appStage != NULL)
     {
         m_appStage->render();
     }
+    m_renderer.renderStageEnd();
+
+    m_renderer.renderUIBegin();
+    if (m_appStage != NULL)
+    {
+        m_appStage->renderUI();
+    }
+    m_renderer.renderUIEnd();
 
     m_renderer.renderEnd();
 }
@@ -555,10 +613,11 @@ void SetupStage::onMouseWheel(int scrollAmount)
 
 void SetupStage::enter()
 {
-    Renderer *renderer= m_app->getRenderer();    
+    Renderer *renderer= m_app->getRenderer();
+    const float aspect= renderer->getWindowAspectRatio();
 
     renderer->setProjectionMatrix(
-        glm::perspective(k_camera_vfov, k_camera_aspect, k_camera_z_near, k_camera_z_far));
+        glm::perspective(k_camera_vfov, aspect, k_camera_z_near, k_camera_z_far));
 
     setCameraOrbitLocation(-45.f, 0.f, 1000.f); // degrees, degrees, cm
 }
@@ -592,6 +651,11 @@ void SetupStage::render()
         drawTransformedAxes(transform, 10.f);
         //drawTransformedBox(transform, glm::vec3(9.f, 4.5f, 6.5f), glm::vec3(1.f, 0.f, 0.f));
     }
+}
+
+void SetupStage::renderUI()
+{
+    m_app->getRenderer()->renderText(100, 100, "This is some text!\nOn a new line as well.");
 }
 
 void SetupStage::setCameraOrbitLocation(float yawDegrees, float pitchDegrees, float radius)
@@ -901,12 +965,12 @@ void DK2Context::getTrackingCameraFrustum(
     const ovrQuatf &q= m_dk2state.CameraPose.Orientation;
     OVR::Matrix3f cameraMatrix(OVR::Quatf(q.x, q.y, q.z, q.w));
 
-    frustum.origin= ovrVector3fToGlmVec3(cameraPose.Position);
+    frustum.origin= ovrVector3ToGlmVec3(cameraPose.Position);
     frustum.origin*= METERS_TO_CENTIMETERS;
 
-    frustum.forward= ovrVector3fToGlmVec3(cameraMatrix.Col(OVR::Axis_Z));
-    frustum.left= ovrVector3fToGlmVec3(cameraMatrix.Col(OVR::Axis_X));
-    frustum.up= ovrVector3fToGlmVec3(cameraMatrix.Col(OVR::Axis_Y));
+    frustum.forward= ovrVector3ToGlmVec3(cameraMatrix.Col(OVR::Axis_Z));
+    frustum.left= ovrVector3ToGlmVec3(cameraMatrix.Col(OVR::Axis_X));
+    frustum.up= ovrVector3ToGlmVec3(cameraMatrix.Col(OVR::Axis_Y));
 
     frustum.HFOV= m_HMDDesc.CameraFrustumHFovInRadians;
     frustum.VFOV= m_HMDDesc.CameraFrustumVFovInRadians;
@@ -923,15 +987,20 @@ glm::mat4 DK2Context::getHMDTransform() const
 Renderer::Renderer()
     : m_sdlapi_initialized(false)
     , m_window(NULL)
+    , m_windowWidth(0)
+    , m_windowHeight(0)
     , m_glContext(NULL)
     , m_projectionMatrix()
     , m_cameraViewMatrix()
+    , m_isRenderingStage(false)
+    , m_isRenderingUI(false)
 {
 }
 
 Renderer::~Renderer()
 {
     assert(!m_sdlapi_initialized);
+    assert(m_instance == NULL);
 }
 
 bool Renderer::init()
@@ -955,8 +1024,11 @@ bool Renderer::init()
         m_window = SDL_CreateWindow("PSMove Coregistration",
             SDL_WINDOWPOS_CENTERED,
             SDL_WINDOWPOS_CENTERED,
-            640, 480,
+            k_window_pixel_width, k_window_pixel_height,
             SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
+        m_windowWidth= k_window_pixel_width;
+        m_windowHeight= k_window_pixel_height;
+
         if (m_window == NULL) 
         {
             Log_ERROR("Renderer::init", "Unable to initialize window: %s", SDL_GetError());
@@ -977,7 +1049,7 @@ bool Renderer::init()
     if (success)
     {
         glClearColor(7.f/255.f, 34.f/255.f, 66.f/255.f, 1.f);
-        glViewport(0, 0, 640, 480);
+        glViewport(0, 0, m_windowWidth, m_windowHeight);
 
         glEnable(GL_LIGHT0);
         glEnable(GL_TEXTURE_2D);
@@ -986,6 +1058,10 @@ bool Renderer::init()
         glEnable(GL_DEPTH_TEST);
         //glDepthFunc(GL_LEQUAL);
         //glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST);
+        glEnable (GL_BLEND);
+        glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        m_instance= this;
     }
 
     return success;
@@ -1010,17 +1086,52 @@ void Renderer::destroy()
         SDL_Quit();
         m_sdlapi_initialized= false;
     }
+
+    m_instance= NULL;
 }
 
 void Renderer::renderBegin()
 {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+}
 
+void Renderer::renderStageBegin()
+{
     glMatrixMode(GL_PROJECTION);
     glLoadMatrixf(glm::value_ptr(m_projectionMatrix));
 
     glMatrixMode(GL_MODELVIEW);
     glLoadMatrixf(glm::value_ptr(m_cameraViewMatrix));
+
+    m_isRenderingStage= true;
+}
+
+void Renderer::renderStageEnd()
+{
+    m_isRenderingStage= false;
+}
+
+void Renderer::renderUIBegin()
+{
+    const glm::mat4 ortho_projection= glm::ortho(
+        0.f, (float)m_windowWidth, // left, right
+        (float)m_windowHeight, 0.f, // bottom, top
+        -1.0f, 1.0f); // zNear, zFar
+
+    glClear(GL_DEPTH_BUFFER_BIT);
+
+    glMatrixMode(GL_PROJECTION);
+    glLoadMatrixf(glm::value_ptr(ortho_projection));
+
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+
+    m_isRenderingUI= true;
+}
+
+void Renderer::renderUIEnd()
+{
+    m_isRenderingUI= false;
 }
 
 void Renderer::renderEnd()
@@ -1028,9 +1139,58 @@ void Renderer::renderEnd()
     SDL_GL_SwapWindow(m_window);
 }
 
+void Renderer::renderText(float x, float y, char *text)
+{
+    assert(m_isRenderingUI); // Don't call this outside of the renderUI() callback
+
+    const AssetManager::FontAsset *font= AssetManager::getInstance()->getDefaultFont();
+    const float initial_x= x;
+
+    // assume orthographic projection with units = screen pixels, origin at top left
+    glBindTexture(GL_TEXTURE_2D, font->textureId);
+    glColor3f(1.f, 1.f, 1.f);
+
+    glBegin(GL_QUADS);
+
+    while (*text) 
+    {
+        char ascii_character= *text;
+
+        if (ascii_character >= 32 && ascii_character < 128) 
+        {
+            stbtt_aligned_quad glyph_quad;
+            int char_index= (int)ascii_character - 32;
+
+            stbtt_GetBakedQuad(
+                const_cast<stbtt_bakedchar *>(font->cdata), 
+                font->textureWidth, font->textureHeight, 
+                char_index, 
+                &x, &y, // x position advances with character by the glyph pixel width
+                &glyph_quad,
+                1); // opengl_fillrule= true
+            glTexCoord2f(glyph_quad.s0,glyph_quad.t0); glVertex2f(glyph_quad.x0,glyph_quad.y0);
+            glTexCoord2f(glyph_quad.s1,glyph_quad.t0); glVertex2f(glyph_quad.x1,glyph_quad.y0);
+            glTexCoord2f(glyph_quad.s1,glyph_quad.t1); glVertex2f(glyph_quad.x1,glyph_quad.y1);
+            glTexCoord2f(glyph_quad.s0,glyph_quad.t1); glVertex2f(glyph_quad.x0,glyph_quad.y1);
+        }
+        else if (ascii_character == '\n')
+        {
+            x= initial_x;
+            y+= font->glyphPixelHeight;
+        }
+
+        ++text;
+    }
+    glEnd();
+
+    // rebind the default texture
+    glBindTexture(GL_TEXTURE_2D, 0);
+}
+
 //-- AssetManager -----
 AssetManager::AssetManager()
-    : m_dk2TextureId(-1)
+    : m_dk2TextureId(0)
+    //, m_defaultFont()
 {
 }
 
@@ -1050,6 +1210,11 @@ bool AssetManager::init()
 
     if (success)
     {
+        success= loadFont(k_default_font_filename, k_default_font_pixel_height, &m_defaultFont);
+    }
+
+    if (success)
+    {
         m_instance= this;
     }
 
@@ -1058,10 +1223,16 @@ bool AssetManager::init()
 
 void AssetManager::destroy()
 {
-    if (m_dk2TextureId != -1)
+    if (m_dk2TextureId != 0)
     {
         glDeleteTextures(1, &m_dk2TextureId);
-        m_dk2TextureId= -1;
+        m_dk2TextureId= 0;
+    }
+
+    if (m_defaultFont.textureId != 0)
+    {
+        glDeleteTextures(1, &m_defaultFont.textureId);
+        m_defaultFont.textureId= 0;
     }
 
     m_instance= NULL;
@@ -1070,50 +1241,121 @@ void AssetManager::destroy()
 bool AssetManager::loadTexture(const char *filename, GLuint *textureId)
 {
     bool success= false;
-    SDL_Surface* surface = SDL_LoadBMP(filename);
 
-    if (surface != NULL)
+    int pixelWidth=0, pixelHeight=0, channelCount=0;
+    stbi_uc *image_buffer= stbi_load(filename, &pixelWidth, &pixelHeight, &channelCount, 3);
+
+    if (image_buffer != NULL)
     {
         GLint glPixelFormat= -1;
 
-        switch (surface->format->format)
+        if (channelCount == 3)
         {
-        case SDL_PIXELFORMAT_RGB24:
-             glPixelFormat= GL_RGB;
-            break;
-        case SDL_PIXELFORMAT_BGR24:
-             glPixelFormat= GL_BGR;
-            break;
-        }
-
-        if (glPixelFormat != -1)
-        {
-            SDL_UnlockSurface(surface);            
-
             glGenTextures(1, textureId);
 
             // Typical Texture Generation Using Data From The Bitmap
             glBindTexture(GL_TEXTURE_2D, *textureId);
-            glTexImage2D(GL_TEXTURE_2D, 0, 3, surface->w, surface->h, 0, glPixelFormat, GL_UNSIGNED_BYTE, surface->pixels);
+            glTexImage2D(GL_TEXTURE_2D, 0, 3, pixelWidth, pixelHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, image_buffer);
             glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
-
-            SDL_LockSurface(surface);
 
             success= true;
         }
         else
         {
-            Log_ERROR("AssetManager::loadTexture", "Image isn't RGB24 or BGR24 pixel format!");
+            Log_ERROR("AssetManager::loadTexture", "Image isn't RGB24 pixel format!");
         }
 
-        SDL_FreeSurface(surface);
-        surface= NULL;
+        stbi_image_free(image_buffer);
     }
     else
     {
         Log_ERROR("AssetManager::loadTexture", "Failed to load: %s(%s)", filename, SDL_GetError());
     }
+
+    return success;
+}
+
+bool AssetManager::loadFont(const char *filename, const float pixelHeight, AssetManager::FontAsset *fontAsset)
+{
+    unsigned char *temp_ttf_buffer = NULL;
+    unsigned char *temp_bitmap = NULL;
+
+    bool success= true;
+
+    // For now assume all font sprite sheets fit in a 512x512 texture
+    fontAsset->textureWidth= 512;
+    fontAsset->textureHeight= 512;
+    fontAsset->glyphPixelHeight= pixelHeight;
+
+    // Allocate scratch buffers
+    temp_ttf_buffer = NULL;
+    temp_bitmap = new unsigned char[fontAsset->textureWidth*fontAsset->textureHeight];
+
+    // Load the True Type Font data into memory
+    if (success)
+    {
+        FILE *fp= fopen(k_default_font_filename, "rb");
+        if (fp != NULL)
+        {
+            // obtain file size
+            fseek (fp , 0 , SEEK_END);
+            size_t fileSize = ftell (fp);
+            rewind (fp);
+
+            if (fileSize > 0 && fileSize < 10*k_meg)
+            {
+                temp_ttf_buffer= new unsigned char[fileSize];
+                size_t bytes_read= fread(temp_ttf_buffer, 1, fileSize, fp);
+
+                if (bytes_read != fileSize)
+                {
+                    Log_ERROR("AssetManager::loadFont", "Failed to load font (%s): failed to read expected # of bytes.", filename);
+                    success= false;
+                }
+            }
+            else
+            {
+                Log_ERROR("AssetManager::loadFont", "Failed to load font (%s): file size invalid", filename);
+                success= false;
+            }
+
+            fclose(fp);
+        }
+        else
+        {
+            Log_ERROR("AssetManager::loadFont", "Failed to open font file (%s)", filename);
+            success= false;
+        }
+    }
+
+    // Build the sprite sheet for the font
+    if (success)
+    {
+        if (stbtt_BakeFontBitmap(
+            temp_ttf_buffer, 0, 
+            pixelHeight, 
+            temp_bitmap, fontAsset->textureWidth, fontAsset->textureHeight, 
+            32,96, fontAsset->cdata) <= 0)
+        {
+            Log_ERROR("AssetManager::loadFont", "Failed to fit font(%s) into %dx%d sprite texture", 
+                filename, fontAsset->textureWidth, fontAsset->textureHeight);
+            success= false;
+        }
+    }
+    
+    // Generate the texture for the font sprite sheet
+    if (success)
+    {
+        glGenTextures(1, &fontAsset->textureId);
+        glBindTexture(GL_TEXTURE_2D, fontAsset->textureId);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, 512,512, 0, GL_ALPHA, GL_UNSIGNED_BYTE, temp_bitmap);            
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    }
+
+    // free scratch buffers
+    delete[] temp_bitmap;
+    if (temp_ttf_buffer != NULL) delete[] temp_ttf_buffer;
 
     return success;
 }
@@ -1269,7 +1511,7 @@ int old_main(int arg, char** args)
             }
             */
 
-            ovrMatrix4fToEigenMatrix4f(dk2mat, dk2eig);
+            ovrMatrix4ToEigenMatrix4(dk2mat, dk2eig);
             RMi = dk2eig.topLeftCorner(3, 3).transpose();           // inner 33 transposed
 
             /*
@@ -1372,6 +1614,8 @@ int old_main(int arg, char** args)
 //-- debug render helper functions -----
 void drawDK2Frustum(DK2TrackingCameraFrustum &frustum)
 {
+    assert(Renderer::getIsRenderingStage());
+
     const float HRatio= tanf(frustum.HFOV/2.f);
     const float VRatio= tanf(frustum.VFOV/2.f);
 
@@ -1423,6 +1667,8 @@ void drawDK2Frustum(DK2TrackingCameraFrustum &frustum)
 
 void drawTransformedAxes(const glm::mat4 &transform, float scale)
 {
+    assert(Renderer::getIsRenderingStage());
+
     glm::vec3 origin(0.f, 0.f, 0.f);
     glm::vec3 xAxis(scale, 0.f, 0.f);
     glm::vec3 yAxis(0.f, scale, 0.f);
@@ -1447,6 +1693,8 @@ void drawTransformedAxes(const glm::mat4 &transform, float scale)
 
 void drawTransformedBox(const glm::mat4 &transform, const glm::vec3 &half_extents, const glm::vec3 &color)
 {
+    assert(Renderer::getIsRenderingStage());
+
     glm::vec3 v0(half_extents.x, half_extents.y, half_extents.z);
     glm::vec3 v1(-half_extents.x, half_extents.y, half_extents.z);
     glm::vec3 v2(-half_extents.x, half_extents.y, -half_extents.z);
@@ -1483,6 +1731,8 @@ void drawTransformedBox(const glm::mat4 &transform, const glm::vec3 &half_extent
 
 void drawTransformedTexturedCube(const glm::mat4 &transform, int textureId, float scale)
 {
+    assert(Renderer::getIsRenderingStage());
+
     glBindTexture(GL_TEXTURE_2D, textureId);
     glColor3f(1.f, 1.f, 1.f);
 
@@ -1526,6 +1776,8 @@ void drawTransformedTexturedCube(const glm::mat4 &transform, int textureId, floa
 
 void drawDK2Model(const glm::mat4 &transform)
 {
+    assert(Renderer::getIsRenderingStage());
+
     int textureID= AssetManager::getInstance()->getDK2TextureId();
 
     glBindTexture(GL_TEXTURE_2D, textureID);
@@ -1585,7 +1837,7 @@ OVR::Matrix4f getDK2CameraInv44(ovrHmd HMD)
     return camMat;
 }
 
-void ovrMatrix4fToEigenMatrix4f(const OVR::Matrix4f& in_ovr, Eigen::Matrix4f& in_eig)
+void ovrMatrix4ToEigenMatrix4(const OVR::Matrix4f& in_ovr, Eigen::Matrix4f& in_eig)
 {
     // The following can probably be done with a simple memcpy but oh well.
     int row, col;
@@ -1606,7 +1858,7 @@ glm::mat4 ovrMatrix4fToGlmMat4(const OVR::Matrix4f& ovr_mat4)
     return glm::transpose(glm::make_mat4((const float *)ovr_mat4.M));
 }
 
-glm::vec3 ovrVector3fToGlmVec3(const OVR::Vector3f &v)
+glm::vec3 ovrVector3ToGlmVec3(const OVR::Vector3f &v)
 {
     return glm::vec3(v.x, v.y, v.z);
 }

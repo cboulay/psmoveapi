@@ -20,6 +20,7 @@ set(PSMOVEAPI_INSTALL_TARGETS) # Container for build targets to be installed
 
 include_directories(${ROOT_DIR}/external/hidapi/hidapi)
 include_directories(${ROOT_DIR}/external/eigen)
+include_directories(${ROOT_DIR}/external/stb)
 # Put any other libraries that you might need in here
 link_directories(${ROOT_DIR}/external/libs)
 

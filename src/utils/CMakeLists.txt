@@ -61,6 +61,10 @@ IF(OCULUS_SDK_FOUND)
         psmoveapi_tracker 
         ${OCULUS_SDK_LIBRARIES}
         ${OPENGL_UTILITIES_LIBRARIES})
+    add_custom_command(TARGET coregister_dk2 POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_LIST_DIR}/coreg_calibration/assets"
+            $<TARGET_FILE_DIR:coregister_dk2>/assets)
     IF(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
         add_custom_command(TARGET coregister_dk2 POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
