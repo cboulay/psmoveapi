@@ -54,21 +54,21 @@ ENDIF()
 # Co-registration Utility
 FIND_PACKAGE(OCULUS_SDK)
 IF(OCULUS_SDK_FOUND)
-    add_executable(coregister_dk2 ${CMAKE_CURRENT_LIST_DIR}/coreg_calibration/coregister_dk2.cpp)
+    add_executable(visual_coregister_dk2 ${CMAKE_CURRENT_LIST_DIR}/visual_setup/visual_coregister_dk2.cpp)
     include_directories(${OCULUS_SDK_INCLUDE_DIRS})
-    target_link_libraries(coregister_dk2 
+    target_link_libraries(visual_coregister_dk2 
         psmoveapi 
         psmoveapi_tracker 
         ${OCULUS_SDK_LIBRARIES}
         ${OPENGL_UTILITIES_LIBRARIES})
-    add_custom_command(TARGET coregister_dk2 POST_BUILD
+    add_custom_command(TARGET visual_coregister_dk2 POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${CMAKE_CURRENT_LIST_DIR}/coreg_calibration/assets"
-            $<TARGET_FILE_DIR:coregister_dk2>/assets)
+            "${CMAKE_CURRENT_LIST_DIR}/visual_setup/assets"
+            $<TARGET_FILE_DIR:visual_coregister_dk2>/assets)
     IF(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
-        add_custom_command(TARGET coregister_dk2 POST_BUILD
+        add_custom_command(TARGET visual_coregister_dk2 POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 "${SDL_BIN_PATH}/SDL2.dll"
-                $<TARGET_FILE_DIR:coregister_dk2>)
+                $<TARGET_FILE_DIR:visual_coregister_dk2>)
     ENDIF()                
 ENDIF(OCULUS_SDK_FOUND)
