@@ -118,6 +118,8 @@ static const PSMoveTrackerSettings tracker_default_settings = {
     .color_update_quality_t1 = 0.8,
     .color_update_quality_t2 = 0.2,
     .color_update_quality_t3 = 6.f,
+    .color_save_colormapping = PSMove_True,
+    .color_list_start_ind = 0,
     .xorigin_cm =  0.f,
     .yorigin_cm = 0.f,
     .zorigin_cm = 0.f
@@ -262,7 +264,7 @@ struct _PSMoveTracker {
 };
 
 /* Preset colors - use them in ascending order if not used yet */
-#define N_PRESET_COLORS 5
+#define N_PRESET_COLORS 5  // preprocessor def needed to create const array (next line)
 static const struct PSMove_RGBValue preset_colors[N_PRESET_COLORS] = {
     { 0xFF, 0x00, 0xFF }, /* magenta */
     { 0x00, 0xFF, 0xFF }, /* cyan */
@@ -1009,11 +1011,12 @@ psmove_tracker_enable(PSMoveTracker *tracker, PSMove *move)
     psmove_set_leds(move, 0, 0, 0);
     psmove_update_leds(move);
 
-    int i;
+    int i, test_ind;
     for (i=0; i<ARRAY_LENGTH(preset_colors); i++) {
-        if (!psmove_tracker_color_is_used(tracker, preset_colors[i])) {
+        test_ind = (tracker->settings.color_list_start_ind + i) % ARRAY_LENGTH(preset_colors);
+        if (!psmove_tracker_color_is_used(tracker, preset_colors[test_ind])) {
             return psmove_tracker_enable_with_color_internal(tracker,
-                    move, preset_colors[i]);
+                move, preset_colors[test_ind]);
         }
     }
 
@@ -1103,20 +1106,24 @@ psmove_tracker_remember_color(PSMoveTracker *tracker, struct PSMove_RGBValue rgb
     tracker->color_mapping.map[slot].dimming = dimming;
     tracker->color_mapping.map[slot].to = to;
 
-    char *filename = psmove_util_get_file_path(COLOR_MAPPING_DAT);
-    FILE *fp = psmove_file_open(filename, "wb");
-    if (fp) {
-        if (!fwrite(&(tracker->color_mapping),
-                    sizeof(struct ColorMappingRingBuffer),
-                    1, fp)) {
-            psmove_WARNING("Cannot write data to: %s\n", filename);
-        } else {
-            printf("color mappings saved.\n");
-        }
+    if (tracker->settings.color_save_colormapping == PSMove_True)
+    {
+        char *filename = psmove_util_get_file_path(COLOR_MAPPING_DAT);
+        FILE *fp = psmove_file_open(filename, "wb");
+        if (fp) {
+            if (!fwrite(&(tracker->color_mapping),
+                sizeof(struct ColorMappingRingBuffer),
+                1, fp)) {
+                psmove_WARNING("Cannot write data to: %s\n", filename);
+            }
+            else {
+                printf("color mappings saved.\n");
+            }
 
-        psmove_file_close(fp);
+            psmove_file_close(fp);
+        }
+        free(filename);
     }
-    free(filename);
 }
 
 enum PSMoveTracker_Status
@@ -1472,42 +1479,67 @@ psmove_tracker_set_camera_color(PSMoveTracker *tracker, PSMove *move,
 int
 psmove_tracker_cycle_color(PSMoveTracker *tracker, PSMove *move)
 {
+    // Find our current color index
     psmove_return_val_if_fail(tracker != NULL, 0);
     psmove_return_val_if_fail(move != NULL, 0);
-    int next_color_index = 0;
-    struct PSMove_RGBValue rgb;
-
     TrackedController *tc = psmove_tracker_find_controller(tracker, move);
+
     if (tc) {
+        struct PSMove_RGBValue rgb;
+
+        // Current color
         rgb.r = (unsigned char)(tc->color.r);
         rgb.g = (unsigned char)(tc->color.g);
         rgb.b = (unsigned char)(tc->color.b);
 
-        int i, next_ind;
-        for (i = 0; i < N_PRESET_COLORS; i++) {
-            next_ind = (i + 1) % N_PRESET_COLORS;
+        int i;
+        for (i = 0; i < ARRAY_LENGTH(preset_colors); i++) {
             if (preset_colors[i].r == rgb.r &&
                 preset_colors[i].g == rgb.g &&
-                preset_colors[i].b == rgb.b &&
-                !psmove_tracker_color_is_used(tracker, preset_colors[next_ind]))
+                preset_colors[i].b == rgb.b)
             {
-                next_color_index = next_ind;
                 break;
             }
         }
+        return psmove_tracker_use_color_at_index(tracker, move, (i + 1) % ARRAY_LENGTH(preset_colors));
+    }
+    return 0;
+}
+
+int
+psmove_tracker_use_color_at_index(PSMoveTracker *tracker, PSMove *move, int req_ind)
+{
+    psmove_return_val_if_fail(tracker != NULL, 0);
+    psmove_return_val_if_fail(move != NULL, 0);
+    TrackedController *tc = psmove_tracker_find_controller(tracker, move);
+
+    if (tc)
+    {
+        // Determine the next available color
+        int i, test_ind;
+        for (i = 0; i < ARRAY_LENGTH(preset_colors); i++)
+        {
+            test_ind = (req_ind + i) % ARRAY_LENGTH(preset_colors);
+            if (!psmove_tracker_color_is_used(tracker, preset_colors[test_ind]))
+            {
+                break;
+            }
+        }
+
+        struct PSMove_RGBValue rgb;
+        CvScalar color;
+        CvScalar hsv_color;
 
         psmove_tracker_set_dimming(tracker, 0.0);  // Set dimming to 0 to trigger blinking calibration.
         psmove_set_leds(move, 0, 0, 0);         // Turn off the LED to make sure it isn't trackable until new colour set.
         psmove_update_leds(move);
 
-        CvScalar color;
-        CvScalar hsv_color;
-        if (psmove_tracker_blinking_calibration(tracker, move, preset_colors[next_color_index], &color, &hsv_color))
+        if (psmove_tracker_blinking_calibration(tracker, move, preset_colors[test_ind], &color, &hsv_color))
         {
             tc->move = move;
-            tc->color = preset_colors[next_color_index];
+            tc->color = preset_colors[test_ind];
             tc->auto_update_leds = PSMove_True;
-            psmove_tracker_remember_color(tracker, preset_colors[next_color_index], color);
+            psmove_tracker_remember_color(tracker, preset_colors[test_ind], color);
             tc->eColor = tc->eFColor = color;
             tc->eColorHSV = tc->eFColorHSV = hsv_color;
         }

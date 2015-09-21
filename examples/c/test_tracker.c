@@ -66,6 +66,8 @@ int main(int arg, char** args) {
     settings.exposure_mode = Exposure_LOW;
     settings.color_mapping_max_age = 0;
     settings.camera_mirror = PSMove_True;
+    settings.color_save_colormapping = PSMove_False;
+    settings.color_list_start_ind = 3;  // Start with red if available.
     PSMoveTracker* tracker = psmove_tracker_new_with_settings(&settings);
     if (!tracker)
     {
