@@ -225,6 +225,13 @@ psmove_fusion_get_modelview_matrix(PSMoveFusion *fusion, PSMove *move)
 }
 
 float *
+psmove_fusion_get_coregistration_matrix(PSMoveFusion *fusion)
+{
+    psmove_return_val_if_fail(fusion != NULL, NULL);
+    return glm::value_ptr(fusion->physical_xf);
+}
+
+float *
 psmove_fusion_get_transform_matrix(PSMoveFusion *fusion)
 {
     psmove_return_val_if_fail(fusion != NULL, NULL);
