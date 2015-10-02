@@ -20,12 +20,12 @@
 OVR::Matrix4f getDK2CameraInv44(ovrHmd HMD) {
 
     ovrTrackingState dk2state;
-    
+
     dk2state = ovr_GetTrackingState(HMD, 0.0);
     OVR::Posef campose(dk2state.CameraPose);
     campose.Rotation.Normalize();  // Probably does nothing as the SDK returns normalized quats anyway.
     campose.Translation *= 100.0;  // m -> cm
-    
+
     // Print to file - for testing in Matlab
     char *fpath = psmove_util_get_file_path("output_camerapose.csv");
     FILE *fp = fopen(fpath, "w");
@@ -76,6 +76,37 @@ int main(int arg, char** args) {
         return -1;
     }
 
+    // Setup DK2
+    ovrBool ovrresult;
+    ovrHmd HMD;
+    ovrTrackingState dk2state;
+    ovrresult = ovr_Initialize(0);
+#if defined(OVR_OS_WIN32)
+    ovrGraphicsLuid luid;
+    ovr_Create(&HMD, &luid);
+#elif defined(OVR_OS_MAC)
+    HMD = ovrHmd_Create(0);
+#endif
+    ovrresult = ovr_ConfigureTracking(HMD,
+        ovrTrackingCap_Orientation |
+        ovrTrackingCap_MagYawCorrection |
+        ovrTrackingCap_Position, 0);  //
+
+    // Initialize variables for our loop.
+    OVR::Posef dk2pose;               // The DK2 pose
+    OVR::Matrix4f dk2mat;             // The DK2 HMD pose in 4x4
+    OVR::Posef psmovepose;            // The psmove pose
+    OVR::Matrix4f psmovemat;          // The PSMove pose in 4x4
+    OVR::Matrix4f camera_invxform;    // The DK2 camera pose inverse in 4x4
+
+    psmovepose.Rotation = OVR::Quatf::Identity();  // PSMove orientation not used by this algorithm.
+
+    int p = 0;                          // NPOSES counter
+    Eigen::MatrixXf A(NPOSES * 3, 15);  // X = A/b
+    Eigen::VectorXf b(NPOSES * 3);
+    Eigen::Matrix4f dk2eig;             // DK2 pose in Eigen 4x4 mat
+    Eigen::Matrix3f RMi;                // Transpose of inner 3x3 of DK2 pose
+
     // Setup PSMove
     int count = psmove_count_connected();
     PSMove **controllers = (PSMove **)calloc(count, sizeof(PSMove *));
@@ -85,7 +116,10 @@ int main(int arg, char** args) {
     settings.color_mapping_max_age = 0;
     settings.exposure_mode = Exposure_LOW;
     settings.camera_mirror = PSMove_True;
+    settings.color_save_colormapping = PSMove_False;
     settings.use_fitEllipse = 1;
+    settings.color_list_start_ind = 3;
+
     PSMoveTracker* tracker = psmove_tracker_new_with_settings(&settings);
     if (tracker == NULL) {
         fprintf(stderr, "No tracker available! (Missing camera?)\n");
@@ -123,38 +157,8 @@ int main(int arg, char** args) {
     psmove_enable_orientation(controllers[i], PSMove_True);  // Though we don't actually use it.
     assert(psmove_has_orientation(controllers[i]));
     int buttons = psmove_get_buttons(controllers[i]);
-    
-    // Setup DK2
-    ovrBool ovrresult;
-    ovrHmd HMD;
-    ovrTrackingState dk2state;
-    ovrresult = ovr_Initialize(0);
-#if defined(OVR_OS_WIN32)
-    ovrGraphicsLuid luid;
-    ovr_Create(&HMD, &luid);
-#elif defined(OVR_OS_MAC)
-    HMD = ovrHmd_Create(0);
-#endif
-    ovrresult = ovr_ConfigureTracking(HMD,
-                ovrTrackingCap_Orientation |
-                ovrTrackingCap_MagYawCorrection |
-                ovrTrackingCap_Position, 0);  //
 
-    // Initialize variables for our loop.
-    OVR::Posef dk2pose;               // The DK2 pose
-    OVR::Matrix4f dk2mat;             // The DK2 HMD pose in 4x4
-    OVR::Posef psmovepose;            // The psmove pose
-    OVR::Matrix4f psmovemat;          // The PSMove pose in 4x4
-    OVR::Matrix4f camera_invxform;    // The DK2 camera pose inverse in 4x4
 
-    psmovepose.Rotation = OVR::Quatf::Identity();  // PSMove orientation not used by this algorithm.
-    
-    int p = 0;                          // NPOSES counter
-    Eigen::MatrixXf A(NPOSES * 3, 15);  // X = A/b
-    Eigen::VectorXf b(NPOSES * 3);
-    Eigen::Matrix4f dk2eig;             // DK2 pose in Eigen 4x4 mat
-    Eigen::Matrix3f RMi;                // Transpose of inner 3x3 of DK2 pose
-    
     // Start with current camera pose inverse
     camera_invxform = getDK2CameraInv44(HMD);
 
@@ -187,6 +191,11 @@ int main(int arg, char** args) {
         {
             ovr_RecenterPose(HMD);
             camera_invxform = getDK2CameraInv44(HMD);
+        }
+
+        if (buttons & Btn_TRIANGLE)
+        {
+            psmove_tracker_cycle_color(tracker, controllers[i]);
         }
 
         // Get DK2 tracking state (contains pose)
