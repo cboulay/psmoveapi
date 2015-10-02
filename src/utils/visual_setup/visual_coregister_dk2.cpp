@@ -88,6 +88,9 @@ static const char *k_dk2_texture_filename= "./assets/textures/DK2diffuse.jpg";
 static const char *k_default_font_filename= "./assets/fonts/OpenSans-Regular.ttf";
 static const float k_default_font_pixel_height= 24.f;
 
+static const glm::vec3 k_dk2_frustum_color= glm::vec3(1.f, 0.788f, 0.055f);
+static const glm::vec3 k_psmove_frustum_color= glm::vec3(0.1f, 0.7f, 0.3f);
+
 enum eAppStageType
 {
     _appStageNone,
@@ -105,6 +108,23 @@ enum eCameraType
 };
 
 //-- definitions -----
+struct TrackingCameraFrustum
+{
+    glm::vec3 origin;
+    glm::vec3 forward, left, up;
+    float HFOV, VFOV;
+    float zNear, zFar;
+};
+
+struct FrustumBounds
+{
+    glm::vec3 origin;
+    glm::vec3 forward, left, up;
+    float hAngleMin, hAngleMax; // radians
+    float vAngleMin, vAngleMax; // radians
+    float zNear, zFar;
+};
+
 class PSMoveContext 
 {
 public:
@@ -120,7 +140,8 @@ public:
     bool calibrateTracker();
     void initFusion();
 
-    glm::mat4 computeFusionTransform() const;
+    glm::mat4 computeWorldTransform(const glm::mat4 &dk2CameraToWorldTransform) const;
+    void getTrackingCameraFrustum(const class DK2Context *dk2Context, TrackingCameraFrustum &outFrustum) const;
 
     const char *getLastErrorMessage() const
     { return m_lastErrorMessage; }
@@ -143,6 +164,8 @@ private:
     PSMove *m_move;
     PSMoveTracker *m_tracker;
     PSMoveFusion *m_fusion;
+    glm::mat4 m_PS3EyeToDK2CameraXform;
+    glm::mat4 m_DK2CameraToPS3EyeXform;
     enum PSMoveTracker_Status m_tracking_status;
     PSMove_3AxisVector m_tracker_position;
     unsigned int m_buttons_down;
@@ -151,23 +174,6 @@ private:
     bool m_use_custom_tracking_color;
     unsigned char m_custom_r, m_custom_g, m_custom_b;
     const char *m_lastErrorMessage;
-};
-
-struct DK2TrackingCameraFrustum
-{
-    glm::vec3 origin;
-    glm::vec3 forward, left, up;
-    float HFOV, VFOV;
-    float zNear, zFar;
-};
-
-struct FrustumBounds
-{
-    glm::vec3 origin;
-    glm::vec3 forward, left, up;
-    float hAngleMin, hAngleMax; // radians
-    float vAngleMin, vAngleMax; // radians
-    float zNear, zFar;
 };
 
 class DK2Context 
@@ -180,7 +186,7 @@ public:
     void destroy();
     void update();
 
-    void getTrackingCameraFrustum(DK2TrackingCameraFrustum &frustum) const;
+    void getTrackingCameraFrustum(TrackingCameraFrustum &frustum) const;
     OVR::Posef getHMDPose() const;
     OVR::Matrix4f getHMDTransform() const;
     OVR::Matrix4f getCameraTransform() const;
@@ -373,6 +379,16 @@ private:
     };
 
     ePSMoveSetup m_psmoveSetupState;
+    bool m_hasRenderedStageAtLeastOnce;
+
+    void setPSMoveSetupState(ePSMoveSetup newState)
+    {
+        if (newState != m_psmoveSetupState)
+        {
+            m_psmoveSetupState= newState;
+            m_hasRenderedStageAtLeastOnce= false;
+        }
+    }
 
 public:
     PSMoveSetupStage(App *app) 
@@ -407,11 +423,16 @@ private:
 
     FrustumBounds m_sampleBounds;
 
+    int m_argc;
+    char** m_argv;
+
 public:
     ComputeCoregistrationStage(App *app)
         : AppStage(app)
         , m_coregState(_CoregStageAttachPSMoveToDK2)
     { }
+
+    bool init(int argc, char** argv);
 
     virtual void enter();
     virtual void update();
@@ -508,11 +529,17 @@ glm::vec3 ovrVector3ToGlmVec3(const OVR::Vector3f &v);
 void drawTransformedAxes(const glm::mat4 &transform, float scale);
 void drawTransformedBox(const glm::mat4 &transform, const glm::vec3 &half_extents, const glm::vec3 &color);
 void drawTransformedTexturedCube(const glm::mat4 &transform, int textureId, float scale);
-void drawDK2Frustum(const DK2TrackingCameraFrustum &frustum);
+void drawTrackingFrustum(const TrackingCameraFrustum &frustum, const glm::vec3 &color);
 void drawFrustumBounds(const FrustumBounds &frustum, const glm::vec3 &color);
 void drawDK2Samples(const OVR::Posef *dk2poses, const int poseCount);
 void drawDK2Model(const glm::mat4 &transform);
+void drawPSMoveSamples(const PSMove_3AxisVector *psmoveposes, const int poseCount);
 void drawPSMoveModel(const glm::mat4 &transform, const glm::vec3 &color);
+
+static bool loadDK2CameraInv44(const char *filename, OVR::Matrix4f *outCamMat);
+static FILE *initRecordedPoseStream(const char *filename);
+static bool readNextRecordedPoseStreamLine(FILE *stream, OVR::Posef *out_psmovepose, OVR::Posef *out_dk2pose);
+static void closeRecordedPoseStream(FILE *stream);
 
 //-- entry point -----
 extern "C" int main(int argc, char *argv[])
@@ -569,6 +596,12 @@ App::init(int argc, char** argv)
     if (success && !m_psmoveContext.init(argc, argv))
     {
         Log_ERROR("App::init", "Failed to initialize PSMove tracking context!");
+        success= false;
+    }
+
+    if (success && !m_computeCoregistrationStage.init(argc, argv))
+    {
+        Log_ERROR("App::init", "Failed to initialize compute coreg stage!");
         success= false;
     }
 
@@ -766,7 +799,7 @@ App::exec(int argc, char** argv)
 //-- AppStage : OrbitCameraSetup -----
 void OrbitCameraSetupStage::enter()
 {
-    m_app->getOrbitCamera()->setCameraOrbitLocation(-45.f, 0.f, 1000.f); // yaw degrees, pitch degrees, radius cm
+    m_app->getOrbitCamera()->setCameraOrbitLocation(-3.f, 0.f, 500.f); // yaw degrees, pitch degrees, radius cm
     m_app->setCameraType(_cameraOrbit);
 }
 
@@ -785,10 +818,10 @@ void OrbitCameraSetupStage::render()
     drawTransformedAxes(glm::mat4(1.0f), 100.f);
 
     {
-        DK2TrackingCameraFrustum frustum;
+        TrackingCameraFrustum frustum;
 
         dk2Context->getTrackingCameraFrustum(frustum);
-        drawDK2Frustum(frustum);
+        drawTrackingFrustum(frustum, k_dk2_frustum_color);
     }
     
     {
@@ -797,16 +830,15 @@ void OrbitCameraSetupStage::render()
         drawDK2Model(transform);
 
         drawTransformedAxes(transform, 10.f);
-        //drawTransformedBox(transform, glm::vec3(9.f, 4.5f, 6.5f), glm::vec3(1.f, 0.f, 0.f));
     }
 }
 
 void OrbitCameraSetupStage::renderUI()
 {
     m_app->getRenderer()->renderText(340, 20, "Viewpoint Setup");
-    m_app->getRenderer()->renderText(200, 40, "Try to get most of the frustum and DK2 in view");
-    m_app->getRenderer()->renderText(10, 550, "Hold left mouse button to pan camera. Mouse wheel to zoom.");
-    m_app->getRenderer()->renderText(10, 570, "Press space when done.");
+    m_app->getRenderer()->renderText(200, 40, "Make sure DK2 is tracking position properly");
+    m_app->getRenderer()->renderText(10, 550, "Left mouse button to pan camera. Mouse wheel to zoom.");
+    m_app->getRenderer()->renderText(10, 570, "Press space when DK2 tracking is verified.");
 }
 
 void OrbitCameraSetupStage::onKeyDown(SDL_Keycode keyCode)
@@ -824,6 +856,7 @@ void PSMoveSetupStage::enter()
     m_app->setCameraType(_cameraFixed);
 
     m_psmoveSetupState= _PSMoveSetupWaitingToStart;
+    m_hasRenderedStageAtLeastOnce= false;
 }
 
 void PSMoveSetupStage::update()
@@ -833,13 +866,23 @@ void PSMoveSetupStage::update()
     switch(m_psmoveSetupState)
     {
     case _PSMoveSetupConnectPSMove:
-        m_psmoveSetupState= psmoveContext->connectController() ? _PSMoveSetupConnectTracker : _PSMoveSetupConnectPSMoveFailed;
+        setPSMoveSetupState(psmoveContext->connectController() ? _PSMoveSetupConnectTracker : _PSMoveSetupConnectPSMoveFailed);
         break;
     case _PSMoveSetupConnectTracker:
-        m_psmoveSetupState= psmoveContext->initTracker() ? _PSMoveSetupCalibrateTracker : _PSMoveSetupConnectTrackerFailed;
+        if (m_hasRenderedStageAtLeastOnce)
+        {
+            // initTracker is a long blocking call. 
+            // Make sure the state has had a change to render the ui once
+            setPSMoveSetupState(psmoveContext->initTracker() ? _PSMoveSetupCalibrateTracker : _PSMoveSetupConnectTrackerFailed);
+        }
         break;
     case _PSMoveSetupCalibrateTracker:
-        m_psmoveSetupState= psmoveContext->calibrateTracker() ? _PSMoveSetupSucceeded : _PSMoveSetupCalibrateTrackerFailed;
+        if (m_hasRenderedStageAtLeastOnce)
+        {
+            // calibrateTracker is a long blocking call.
+            // Make sure the state has had a change to render the ui once
+            setPSMoveSetupState(psmoveContext->calibrateTracker() ? _PSMoveSetupSucceeded : _PSMoveSetupCalibrateTrackerFailed);
+        }
         break;
     }
 }
@@ -847,30 +890,29 @@ void PSMoveSetupStage::update()
 void PSMoveSetupStage::render()
 {
     DK2Context *dk2Context= m_app->getDK2Context();
-    DK2TrackingCameraFrustum frustum;
-
-    dk2Context->getTrackingCameraFrustum(frustum);
-    drawDK2Frustum(frustum);
+    glm::mat4 rotateX90= glm::rotate(glm::mat4(1.f), 90.f, glm::vec3(1.f, 0.f, 0.f));
 
     switch(m_psmoveSetupState)
     {
     case _PSMoveSetupWaitingToStart:
-        drawPSMoveModel(glm::mat4(1.f), glm::vec3(0.5f, 0.5f, 0.5f));
+        drawPSMoveModel(rotateX90, glm::vec3(0.5f, 0.5f, 0.5f));
         break;
     case _PSMoveSetupConnectPSMove:
     case _PSMoveSetupConnectTracker:
     case _PSMoveSetupCalibrateTracker:
-        drawPSMoveModel(glm::mat4(1.f), glm::vec3(0.9f, 0.9f, 0.f));
+        drawPSMoveModel(rotateX90, glm::vec3(0.9f, 0.9f, 0.f));
         break;
     case _PSMoveSetupConnectPSMoveFailed:
     case _PSMoveSetupConnectTrackerFailed:
     case _PSMoveSetupCalibrateTrackerFailed:
-        drawPSMoveModel(glm::mat4(1.f), glm::vec3(0.9f, 0.0f, 0.0f));
+        drawPSMoveModel(rotateX90, glm::vec3(0.9f, 0.0f, 0.0f));
         break;
     case _PSMoveSetupSucceeded:
-        drawPSMoveModel(glm::mat4(1.f), glm::vec3(0.f, 0.9f, 0.0f));
+        drawPSMoveModel(rotateX90, glm::vec3(0.f, 0.9f, 0.0f));
         break;
     }
+
+    m_hasRenderedStageAtLeastOnce= true;
 }
 
 void PSMoveSetupStage::renderUI()
@@ -897,9 +939,12 @@ void PSMoveSetupStage::renderUI()
         break;
     case _PSMoveSetupConnectPSMoveFailed:
     case _PSMoveSetupConnectTrackerFailed:
-    case _PSMoveSetupCalibrateTrackerFailed:
         renderer->renderText(10, 550, psmoveContext->getLastErrorMessage());
         renderer->renderText(10, 570, "Press space to retry.");
+        break;
+    case _PSMoveSetupCalibrateTrackerFailed:
+        renderer->renderText(10, 550, psmoveContext->getLastErrorMessage());
+        renderer->renderText(10, 570, "Press space to retry blink calibration. Press backspace to reset the camera.");
         break;
     case _PSMoveSetupSucceeded:
         renderer->renderText(10, 570, "Calibration succeeded! Press space to continue.");
@@ -909,35 +954,59 @@ void PSMoveSetupStage::renderUI()
 
 void PSMoveSetupStage::onKeyDown(SDL_Keycode keyCode)
 {
-    if (keyCode == SDLK_SPACE)
+    switch(m_psmoveSetupState)
     {
-        switch(m_psmoveSetupState)
+    case _PSMoveSetupWaitingToStart:
+        if (keyCode == SDLK_SPACE)
         {
-        case _PSMoveSetupWaitingToStart:
-            m_psmoveSetupState= _PSMoveSetupConnectPSMove;
-            break;
-        case _PSMoveSetupConnectPSMove:
-        case _PSMoveSetupConnectTracker:
-        case _PSMoveSetupCalibrateTracker:
-            // Ignore the key press
-            break;
-        case _PSMoveSetupConnectPSMoveFailed:
-            m_psmoveSetupState= _PSMoveSetupConnectPSMove;
-            break;
-        case _PSMoveSetupConnectTrackerFailed:
-            m_psmoveSetupState= _PSMoveSetupConnectTracker;
-            break;
-        case _PSMoveSetupCalibrateTrackerFailed:
-            m_psmoveSetupState= _PSMoveSetupCalibrateTracker;
-            break;
-        case _PSMoveSetupSucceeded:
-            m_app->setAppStage(_appStageComputeCoreg);
-            break;
+            setPSMoveSetupState(_PSMoveSetupConnectPSMove);
         }
+        break;
+    case _PSMoveSetupConnectPSMove:
+    case _PSMoveSetupConnectTracker:
+    case _PSMoveSetupCalibrateTracker:
+        // Ignore the key press 
+        break;
+    case _PSMoveSetupConnectPSMoveFailed:
+        if (keyCode == SDLK_SPACE)
+        {
+            setPSMoveSetupState(_PSMoveSetupConnectPSMove);
+        }
+        break;
+    case _PSMoveSetupConnectTrackerFailed:
+        if (keyCode == SDLK_SPACE)
+        {
+            setPSMoveSetupState(_PSMoveSetupConnectTracker);
+        }
+        break;
+    case _PSMoveSetupCalibrateTrackerFailed:
+        if (keyCode == SDLK_SPACE)
+        {
+            setPSMoveSetupState(_PSMoveSetupCalibrateTracker);
+        }
+        else if (keyCode == SDLK_BACKSPACE)
+        {
+            setPSMoveSetupState(_PSMoveSetupConnectTracker);
+        }
+        break;
+    case _PSMoveSetupSucceeded:
+        if (keyCode == SDLK_SPACE)
+        {
+            m_app->setAppStage(_appStageComputeCoreg);
+        }
+        break;
     }
 }
 
 //-- AppStage : ComputeCoregistrationStage -----
+bool ComputeCoregistrationStage::init(int argc, char** argv)
+{
+    m_argc= argc;
+    m_argv= argv;
+
+    return true;
+}
+
 void ComputeCoregistrationStage::enter()
 {
     m_app->getFixedCamera()->setCameraOrbitLocation(0.f, 0.f, 150.f); // yaw degrees, pitch degrees, radius cm
@@ -959,10 +1028,58 @@ void ComputeCoregistrationStage::update()
         {
             DK2Context *dk2Context= m_app->getDK2Context();
             PSMoveContext *psMoveContext= m_app->getPSMoveContext();
+            bool loadedDK2CameraInv44= false;
 
             if (m_poseCount == 0)
             {
-                DK2TrackingCameraFrustum frustum;
+                if (m_argc >= 2 && m_argc <= 3)
+                {
+                    loadedDK2CameraInv44= loadDK2CameraInv44(m_argv[1], &m_camera_invxform);
+                }
+
+                if (m_argc == 3 && loadedDK2CameraInv44)
+                {
+                    TrackingCameraFrustum frustum; 
+                    OVR::Posef dk2pose;               // The DK2 pose
+                    OVR::Posef psmovepose;            // The psmove pose
+
+                    char *input_fpath = psmove_util_get_file_path(m_argv[2]);
+                    FILE *recorded_pose_stream= recorded_pose_stream= initRecordedPoseStream(input_fpath);
+                    free(input_fpath);
+
+                    // Reset the sample bounds
+                    dk2Context->getTrackingCameraFrustum(frustum);
+                    frustumBoundsInit(
+                        frustum.origin, frustum.forward, frustum.left, frustum.up, 
+                        m_sampleBounds);
+
+                    while (m_poseCount < NPOSES && 
+                            readNextRecordedPoseStreamLine(recorded_pose_stream, &psmovepose, &dk2pose))
+                    {
+                        glm::vec3 dk2position= ovrVector3ToGlmVec3(dk2pose.Translation);
+                        PSMove_3AxisVector psmoveposition;
+
+                        psmoveposition.x= psmovepose.Translation.x;
+                        psmoveposition.y= psmovepose.Translation.y;
+                        psmoveposition.z= psmovepose.Translation.z;
+
+                        m_dk2poses[m_poseCount]= dk2pose;
+                        m_psmoveposes[m_poseCount]= psmoveposition;
+                        m_poseCount++;
+
+                        frustumBoundsEnclosePoint(dk2position, m_sampleBounds);
+                    }
+
+                    if (recorded_pose_stream != NULL)
+                    {
+                        closeRecordedPoseStream(recorded_pose_stream);
+                    }
+                }
+            }
+
+            if (m_poseCount == 0)
+            {
+                TrackingCameraFrustum frustum;
 
                 // Reset the sample bounds
                 dk2Context->getTrackingCameraFrustum(frustum);
@@ -970,11 +1087,14 @@ void ComputeCoregistrationStage::update()
                     frustum.origin, frustum.forward, frustum.left, frustum.up, 
                     m_sampleBounds);
 
-                // Compute current camera pose inverse if this is the first sample
-                m_camera_invxform = dk2Context->getDK2CameraInv44();
+                if (!loadedDK2CameraInv44)
+                {
+                    // Compute current camera pose inverse if this is the first sample
+                    m_camera_invxform = dk2Context->getDK2CameraInv44();
+                }
             }
 
-            if (psMoveContext->getTrackingStatus() == Tracker_TRACKING)
+            if (psMoveContext->getTrackingStatus() == Tracker_TRACKING && m_poseCount < NPOSES)
             {
                 OVR::Posef dk2pose= dk2Context->getHMDPose();
                 glm::vec3 dk2position= ovrVector3ToGlmVec3(dk2pose.Translation);
@@ -1003,9 +1123,11 @@ void ComputeCoregistrationStage::render()
     {
     case _CoregStageAttachPSMoveToDK2:
         {
+            glm::mat4 rotateX90= glm::rotate(glm::mat4(1.f), 90.f, glm::vec3(1.f, 0.f, 0.f));
+
             // Offset the models (in cm) just enough so that they look like they are attached
             drawDK2Model(glm::translate(glm::mat4(1.f), glm::vec3(-9.f, 0.f, 0.f)));
-            drawPSMoveModel(glm::translate(glm::mat4(1.f), glm::vec3(2.3f, 9.f, 0.f)), glm::vec3(1.f, 1.f, 1.f));
+            drawPSMoveModel(glm::translate(glm::mat4(1.f), glm::vec3(2.3f, 9.f, 0.f)) * rotateX90, glm::vec3(1.f, 1.f, 1.f));
         }
         break;
     case _CoregStageSampling:
@@ -1021,17 +1143,18 @@ void ComputeCoregistrationStage::render()
             if (m_poseCount > 0)
             {
                 drawDK2Samples(m_dk2poses, m_poseCount);
+                //drawPSMoveSamples(m_psmoveposes, m_poseCount);
             }
 
-            // Draw a fustum bounding box of the samples
+            // Draw a frustum bounding box of the samples
             drawFrustumBounds(m_sampleBounds, glm::vec3(0.f, 1.f, 0.f));
 
             // Draw the frustum for the DK2 camera
             {
-                DK2TrackingCameraFrustum frustum;
+                TrackingCameraFrustum frustum;
 
                 dk2Context->getTrackingCameraFrustum(frustum);
-                drawDK2Frustum(frustum);
+                drawTrackingFrustum(frustum, k_dk2_frustum_color);
             }
 
             // Draw the DK2 model
@@ -1114,10 +1237,18 @@ void TestCoregistrationStage::render()
 
     // Draw the frustum for the DK2 camera
     {
-        DK2TrackingCameraFrustum frustum;
+        TrackingCameraFrustum frustum;
 
         dk2Context->getTrackingCameraFrustum(frustum);
-        drawDK2Frustum(frustum);
+        drawTrackingFrustum(frustum, k_dk2_frustum_color);
+    }
+
+    // Draw the frustum for the PSMove camera
+    {
+        TrackingCameraFrustum frustum;
+
+        psMoveContext->getTrackingCameraFrustum(dk2Context, frustum);
+        drawTrackingFrustum(frustum, k_psmove_frustum_color);
     }
 
     // Draw the DK2 model
@@ -1130,8 +1261,8 @@ void TestCoregistrationStage::render()
 
     // Draw the psmove model
     {
-        glm::mat4 cameraToWorldTransform= ovrMatrix4fToGlmMat4(dk2Context->getCameraTransform());
-        glm::mat4 worldTransform= cameraToWorldTransform * psMoveContext->computeFusionTransform();
+        glm::mat4 dk2CameraToWorldTransform= ovrMatrix4fToGlmMat4(dk2Context->getCameraTransform());
+        glm::mat4 worldTransform= psMoveContext->computeWorldTransform(dk2CameraToWorldTransform);
 
         drawPSMoveModel(worldTransform, glm::vec3(1.f, 1.f, 1.f));
         drawTransformedAxes(worldTransform, 10.f);
@@ -1160,6 +1291,7 @@ PSMoveContext::PSMoveContext()
     , m_move(NULL)
     , m_tracker(NULL)
     , m_fusion(NULL)
+    , m_PS3EyeToDK2CameraXform(1.f)
     , m_tracking_status(Tracker_NOT_CALIBRATED)
     , m_buttons_down(0)
     , m_buttons_pressed(0)
@@ -1194,7 +1326,7 @@ bool PSMoveContext::init(int argc, char** argv)
         success = false;
     }
 
-    if (success && argc >= 3) 
+    if (success && argc >= 4) 
     {
         m_custom_r= (unsigned char)atoi(argv[1]);
         m_custom_g= (unsigned char)atoi(argv[2]);
@@ -1214,6 +1346,13 @@ bool PSMoveContext::initTracker()
 
     m_lastErrorMessage= NULL;
 
+    if (m_tracker != NULL)
+    {
+        Log_INFO("PSMoveContext::init()", "Tracker already initialized. Turning off first.");
+        psmove_tracker_free(m_tracker);
+        m_tracker= NULL;
+    }
+
     Log_INFO("PSMoveContext::init()", "Turning on PSMove Tracking Camera");
     if (success)
     {
@@ -1222,12 +1361,23 @@ bool PSMoveContext::initTracker()
         settings.color_mapping_max_age = 0;
         settings.exposure_mode = Exposure_LOW;
         settings.camera_mirror = PSMove_True;
+        settings.camera_type= PSMove_Camera_PS3EYE_BLUEDOT; // Wider FOV
         settings.use_fitEllipse = 1;
 
         m_tracker = psmove_tracker_new_with_settings(&settings);
         if (m_tracker != NULL) 
         {
             Log_INFO("PSMoveContext::init()", "Tracking camera initialized");
+
+            // Make sure NOT to use the positional Kalman filter since it adds a 
+            // time latency to the psmove positional sampling that skews
+            // the coregistration transform in wierd ways.
+            PSMoveTrackerSmoothingSettings smoothing_settings;
+            psmove_tracker_get_smoothing_settings(m_tracker, &smoothing_settings);
+            smoothing_settings.filter_do_2d_r = 0;
+            smoothing_settings.filter_do_2d_xy = 0;
+            smoothing_settings.filter_3d_type = Smoothing_LowPass;
+            psmove_tracker_set_smoothing_settings(m_tracker, &smoothing_settings);
         }
         else
         {
@@ -1275,7 +1425,15 @@ bool PSMoveContext::connectController()
         {
             psmove_enable_orientation(m_move, PSMove_True);  // Though we don't actually use it.
 
-            if (!psmove_has_orientation(m_move))
+            if (psmove_has_orientation(m_move))
+            {
+                // The corresponds to default pose of the psmove model (which is aligned down the +z axis)
+                psmove_set_calibration_transform(m_move, k_psmove_identity_pose_laying_flat);
+
+                // Put the orientation data in the OpenGL coordinate system
+                psmove_set_sensor_data_transform(m_move, k_psmove_sensor_transform_opengl);
+            }
+            else
             {
                 setLastErrorMessage("Failed to initialize PSMove orientation update.");
                 success= false;
@@ -1339,24 +1497,67 @@ void PSMoveContext::initFusion()
 
     // Setup the fusion tracker system. This also loads the physical transform from file if present.
     m_fusion = psmove_fusion_new(m_tracker, 1., 1000.);
+
+    // Extract the co registration transform
+    m_PS3EyeToDK2CameraXform= glm::make_mat4(psmove_fusion_get_coregistration_matrix(m_fusion));
 }
 
-glm::mat4 PSMoveContext::computeFusionTransform() const
+glm::mat4 PSMoveContext::computeWorldTransform(const glm::mat4 &dk2CameraToWorldTransform) const
 {
     assert(m_fusion);
     assert(m_move);
 
-    // Get the orientation of the controller
+    // Get the orientation of the controller in world space (OpenGL Coordinate System)
     glm::quat q;
     psmove_get_orientation(m_move, &q.w, &q.x, &q.y, &q.z);
-    glm::mat4 rotation= glm::mat4_cast(q);
+    glm::mat4 worldSpaceOrientation= glm::mat4_cast(q);
 
-    // Get the position of the controller
-    glm::vec3 t;
-    psmove_fusion_get_transformed_location(m_fusion, m_move, &t.x, &t.y, &t.z);
-    glm::mat4 translation= glm::translate(glm::mat4(), t);
+    // Convert the position provided by the fusion api in dk2 camera space to world space
+    glm::vec4 dk2CameraSpaceTranslation(1.f);
+    psmove_fusion_get_transformed_location(m_fusion, m_move, 
+        &dk2CameraSpaceTranslation.x, &dk2CameraSpaceTranslation.y, &dk2CameraSpaceTranslation.z);
+    glm::mat4 worldSpaceTranslation= 
+        glm::translate(glm::mat4(1.f), glm::vec3(dk2CameraToWorldTransform * dk2CameraSpaceTranslation));
 
-    return translation * rotation;
+    // Return a transform that merges together the world space orientation and translation
+    return worldSpaceTranslation * worldSpaceOrientation;
+}
+
+void PSMoveContext::getTrackingCameraFrustum(
+    const class DK2Context *dk2Context, 
+    TrackingCameraFrustum &frustum) const
+{
+    glm::mat4 dk2CameraToWorld= ovrMatrix4fToGlmMat4(dk2Context->getCameraTransform());
+    glm::mat4 psmoveCameraToWorld= dk2CameraToWorld * m_PS3EyeToDK2CameraXform;
+
+    frustum.origin= glm::vec3(psmoveCameraToWorld[3]);
+
+    frustum.forward= glm::vec3(psmoveCameraToWorld[2]); // z-axis
+    frustum.left= glm::vec3(psmoveCameraToWorld[0]); // x-axis
+    frustum.up= glm::vec3(psmoveCameraToWorld[1]); // y-axis
+
+    {
+        PSMoveTrackerSettings settings;
+
+        psmove_tracker_get_settings(m_tracker, &settings);
+
+        switch(settings.camera_type)
+        {
+        case PSMove_Camera_PS3EYE_BLUEDOT:
+        default:
+            frustum.HFOV= glm::radians(60.f);
+            frustum.VFOV= glm::radians(45.f);
+            break;
+        case PSMove_Camera_PS3EYE_REDDOT:
+            frustum.HFOV= glm::radians(56.f);
+            frustum.VFOV= glm::radians(56.f);
+            break;
+        }
+
+        // Outside of these distances psmove tracking isn't very good
+        frustum.zNear= 10.f; // cm
+        frustum.zFar= 200.f; // cm
+    }
 }
 
 void PSMoveContext::setLastErrorMessage(const char *errorMessage)
@@ -1505,7 +1706,7 @@ void DK2Context::update()
 }
 
 void DK2Context::getTrackingCameraFrustum(
-    DK2TrackingCameraFrustum &frustum) const
+    TrackingCameraFrustum &frustum) const
 {
     const ovrPosef &cameraPose= m_dk2state.CameraPose;
     const ovrQuatf &q= m_dk2state.CameraPose.Orientation;
@@ -1538,7 +1739,7 @@ OVR::Matrix4f DK2Context::getCameraTransform() const
 {
     const ovrQuatf &q= m_dk2state.CameraPose.Orientation;
     const ovrVector3f &v= m_dk2state.CameraPose.Position;
-    OVR::Posef cameraPose(OVR::Quatf(q.x, q.y, q.z, q.w), OVR::Vector3f(v.x, v.y, v.z));
+    OVR::Posef cameraPose(OVR::Quatf(q.x, q.y, q.z, q.w), OVR::Vector3f(v.x, v.y, v.z) * METERS_TO_CENTIMETERS);
 
     return OVR::Matrix4f(cameraPose);
 }
@@ -1547,7 +1748,7 @@ OVR::Matrix4f DK2Context::getDK2CameraInv44() const
 {
     OVR::Posef campose(m_dk2state.CameraPose);
     campose.Rotation.Normalize();  // Probably does nothing as the SDK returns normalized quats anyway.
-    campose.Translation *= 100.0;  // m -> cm
+    campose.Translation *= METERS_TO_CENTIMETERS;
     
     // Print to file - for testing in Matlab
     char *fpath = psmove_util_get_file_path("output_camerapose.csv");
@@ -2178,7 +2379,7 @@ glm::vec3 ovrVector3ToGlmVec3(const OVR::Vector3f &v)
 }
 
 //-- debug render helper functions -----
-void drawDK2Frustum(const DK2TrackingCameraFrustum &frustum)
+void drawTrackingFrustum(const TrackingCameraFrustum &frustum, const glm::vec3 &color)
 {
     assert(Renderer::getIsRenderingStage());
 
@@ -2207,7 +2408,7 @@ void drawDK2Frustum(const DK2TrackingCameraFrustum &frustum)
     
     glBegin(GL_LINES);
 
-    glColor3ub(255, 201, 14);
+    glColor3fv(glm::value_ptr(color));
 
     glVertex3fv(glm::value_ptr(near0)); glVertex3fv(glm::value_ptr(near1));
     glVertex3fv(glm::value_ptr(near1)); glVertex3fv(glm::value_ptr(near2));
@@ -2301,6 +2502,21 @@ void drawDK2Samples(const OVR::Posef *dk2poses, const int poseCount)
         const OVR::Posef &pose= dk2poses[sampleIndex];        
 
         glVertex3f(pose.Translation.x, pose.Translation.y, pose.Translation.z);
+    }
+
+    glEnd();
+}
+
+void drawPSMoveSamples(const PSMove_3AxisVector *psmoveposes, const int poseCount)
+{
+    glColor3ub(0, 255, 0);
+    glBegin(GL_LINE_STRIP);
+
+    for (int sampleIndex= 0; sampleIndex < poseCount; ++sampleIndex)
+    {
+        const PSMove_3AxisVector &pose= psmoveposes[sampleIndex];        
+
+        glVertex3f(pose.x, pose.y, pose.z);
     }
 
     glEnd();
@@ -2461,4 +2677,145 @@ void drawPSMoveModel(const glm::mat4 &transform, const glm::vec3 &color)
 
     // rebind the default texture
     glBindTexture(GL_TEXTURE_2D, 0); 
+}
+
+//-- debug logging -----
+static bool loadDK2CameraInv44(const char *filename, OVR::Matrix4f *outCamMat) 
+{
+    OVR::Posef campose;
+    bool success= false;
+
+    char *fpath = psmove_util_get_file_path(filename);
+    FILE *fp = fopen(fpath, "r");
+    free(fpath);
+
+    if (fp != NULL)
+    {
+        char line[1024];
+
+        if (fgets(line, 1024, fp))
+        {
+            const int k_colomn_count= 7;
+            float *target_value[k_colomn_count]= {
+                &campose.Translation.x, &campose.Translation.y, &campose.Translation.z,
+                &campose.Rotation.w, &campose.Rotation.x, &campose.Rotation.y, &campose.Rotation.z};
+            int match_token_count= 0;
+
+            for (const char *token= strtok(line, ","); token && *token; token = strtok(NULL, ",\n"))
+            {
+                *target_value[match_token_count]= atof(token);
+                ++match_token_count;
+            }
+
+            success= match_token_count == k_colomn_count;
+        }
+
+        fclose(fp);
+    }
+
+    if (success)
+    {
+        OVR::Matrix4f camMat(campose);
+    
+        printf("Camera pose 4x4:\n");
+        printf("%f, %f, %f, %f\n%f, %f, %f, %f\n%f, %f, %f, %f\n%f, %f, %f, %f\n",
+            camMat.M[0][0], camMat.M[0][1], camMat.M[0][2], camMat.M[0][3],
+            camMat.M[1][0], camMat.M[1][1], camMat.M[1][2], camMat.M[1][3],
+            camMat.M[2][0], camMat.M[2][1], camMat.M[2][2], camMat.M[2][3],
+            camMat.M[3][0], camMat.M[3][1], camMat.M[3][2], camMat.M[3][3]);
+
+        camMat.InvertHomogeneousTransform();
+        printf("Inverted camera pose 4x4:\n");
+        printf("%f, %f, %f, %f\n%f, %f, %f, %f\n%f, %f, %f, %f\n%f, %f, %f, %f\n",
+            camMat.M[0][0], camMat.M[0][1], camMat.M[0][2], camMat.M[0][3],
+            camMat.M[1][0], camMat.M[1][1], camMat.M[1][2], camMat.M[1][3],
+            camMat.M[2][0], camMat.M[2][1], camMat.M[2][2], camMat.M[2][3],
+            camMat.M[3][0], camMat.M[3][1], camMat.M[3][2], camMat.M[3][3]);
+
+        *outCamMat= camMat;
+    }
+
+    return success;
+}
+
+static FILE *initRecordedPoseStream(const char *filename)
+{
+    FILE *stream= fopen(filename, "r");
+    bool success= false;
+
+    if (stream != NULL)
+    {
+        char line[1024];
+        if (fgets(line, 1024, stream))
+        {
+            const int k_colomn_count= 14;
+            const char headers[k_colomn_count][8]= {"psm_px","psm_py","psm_pz","psm_ow","psm_ox","psm_oy","psm_oz","dk2_px","dk2_py","dk2_pz","dk2_ow","dk2_ox","dk2_oy","dk2_oz"};
+            int match_token_count= 0;
+
+            for (const char *token= strtok(line, ","); token && *token; token = strtok(NULL, ",\n"))
+            {
+                if (strcmp(token, headers[match_token_count]) == 0)
+                {
+                    ++match_token_count;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            success= match_token_count == k_colomn_count;
+        }
+    }
+
+    if (!success)
+    {
+        if (stream != NULL)
+        {
+            fclose(stream);
+        }
+
+        stream= NULL;
+    }
+
+    return stream;
+}
+
+static bool readNextRecordedPoseStreamLine(FILE *stream, OVR::Posef *out_psmovepose, OVR::Posef *out_dk2pose)
+{
+    bool success= false;
+
+    if (stream != NULL)
+    {
+        char line[1024];
+
+        if (fgets(line, 1024, stream))
+        {
+            const int k_colomn_count= 14;
+            float *target_value[k_colomn_count]= {
+                &out_psmovepose->Translation.x, &out_psmovepose->Translation.y, &out_psmovepose->Translation.z,
+                &out_psmovepose->Rotation.w, &out_psmovepose->Rotation.x, &out_psmovepose->Rotation.y, &out_psmovepose->Rotation.z,
+                &out_dk2pose->Translation.x, &out_dk2pose->Translation.y, &out_dk2pose->Translation.z,
+                &out_dk2pose->Rotation.w, &out_dk2pose->Rotation.x, &out_dk2pose->Rotation.y, &out_dk2pose->Rotation.z};
+            int match_token_count= 0;
+
+            for (const char *token= strtok(line, ","); token && *token; token = strtok(NULL, ",\n"))
+            {
+                *target_value[match_token_count]= atof(token);
+                ++match_token_count;
+            }
+
+            success= match_token_count == k_colomn_count;
+        }
+    }
+
+    return success;
+}
+
+static void closeRecordedPoseStream(FILE *stream)
+{
+    if (stream)
+    {
+        fclose(stream);
+    }
 }
