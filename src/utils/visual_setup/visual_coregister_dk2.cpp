@@ -46,11 +46,11 @@
 #endif
 
 //-- macros -----
-#define Log_INFO(section, msg, ...) \
-    fprintf(stdout, "INFO [" section "] %s\n", msg, ## __VA_ARGS__)
+#define Log_INFO(section, format, ...) \
+    fprintf(stdout, "INFO [" section "] " format "\n", __VA_ARGS__)
 
-#define Log_ERROR(section, msg, ...) \
-    fprintf(stderr, "ERROR [" section "] %s\n", msg, ## __VA_ARGS__)
+#define Log_ERROR(section, format, ...) \
+    fprintf(stderr, "ERROR [" section "] " format "\n", __VA_ARGS__)
 
 //-- typedefs -----
 #ifndef OVR_OS_WIN32
@@ -1563,7 +1563,7 @@ void PSMoveContext::getTrackingCameraFrustum(
 void PSMoveContext::setLastErrorMessage(const char *errorMessage)
 {
     m_lastErrorMessage= errorMessage;
-    Log_ERROR("PSMoveContext", errorMessage);
+    Log_ERROR("PSMoveContext", "%s", errorMessage);
 }
 
 void PSMoveContext::destroy()
