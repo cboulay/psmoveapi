@@ -138,7 +138,7 @@ public:
     bool connectController();
     bool initTracker();
     bool calibrateTracker();
-    void initFusion();
+    void initFusion(const glm::mat4 &coregistrationTransform);
 
     glm::mat4 computeWorldTransform(const glm::mat4 &dk2CameraToWorldTransform) const;
     void getTrackingCameraFrustum(const class DK2Context *dk2Context, TrackingCameraFrustum &outFrustum) const;
@@ -421,7 +421,9 @@ private:
     PSMove_3AxisVector m_psmoveposes[NPOSES];
     int m_poseCount;
 
-    FrustumBounds m_sampleBounds;
+	FrustumBounds m_sampleBounds;
+
+	glm::mat4 m_coregTransform;
 
     int m_argc;
     char** m_argv;
@@ -433,6 +435,8 @@ public:
     { }
 
     bool init(int argc, char** argv);
+
+	glm::mat4 getCoregistrationTransform() const { return m_coregTransform; }
 
     virtual void enter();
     virtual void update();
@@ -463,16 +467,24 @@ public:
 
     Renderer *getRenderer()
     { return &m_renderer; }
+
     DK2Context *getDK2Context()
     { return &m_dk2Context; }
     PSMoveContext *getPSMoveContext()
     { return &m_psmoveContext; }
+
     AssetManager *getAssetManager()
     { return &m_assetManager; }
+
     Camera *getOrbitCamera()
     { return &m_orbitCamera; }
     Camera *getFixedCamera()
     { return &m_fixedCamera; }
+
+	OrbitCameraSetupStage *getOrbitCameraSetupStage() { return &m_orbitCameraSetupStage; }
+	PSMoveSetupStage *getPSMoveSetupStage() { return &m_psmoveSetupStage; }
+	ComputeCoregistrationStage *getComputeCoregistrationStage() { return &m_computeCoregistrationStage; }
+	TestCoregistrationStage *getTestCoregistrationStage() { return &m_testCoregistrationStage; }
 
     int exec(int argc, char** argv);
 
@@ -514,7 +526,8 @@ private:
 //-- prototypes -----
 void computeAndSaveCoregistrationTransform(
     const OVR::Matrix4f &camera_invxform,
-    const OVR::Posef *dk2poses, const PSMove_3AxisVector *psmoveposes, int poseCount);
+    const OVR::Posef *dk2poses, const PSMove_3AxisVector *psmoveposes, int poseCount,
+	glm::mat4 &outCoregTransform);
 
 void frustumBoundsInit(
     const glm::vec3 &origin, const glm::vec3 &forward, const glm::vec3 &left, const glm::vec3 &up, 
@@ -1014,6 +1027,8 @@ void ComputeCoregistrationStage::enter()
 
     m_coregState= _CoregStageAttachPSMoveToDK2;
     m_poseCount= 0;
+
+	m_coregTransform = glm::mat4(1.f);
 }
 
 void ComputeCoregistrationStage::update()
@@ -1109,7 +1124,7 @@ void ComputeCoregistrationStage::update()
 
             if (m_poseCount >= NPOSES)
             {
-                computeAndSaveCoregistrationTransform(m_camera_invxform, m_dk2poses, m_psmoveposes, NPOSES);
+				computeAndSaveCoregistrationTransform(m_camera_invxform, m_dk2poses, m_psmoveposes, NPOSES, m_coregTransform);
                 m_coregState= _CoregStageComplete;
             }
         }
@@ -1215,6 +1230,7 @@ void ComputeCoregistrationStage::onKeyDown(SDL_Keycode keyCode)
         {
             m_poseCount= 0;
             m_coregState= _CoregStageSampling;
+			m_coregTransform = glm::mat4(1.f);
         }
         break;
     }
@@ -1224,7 +1240,7 @@ void ComputeCoregistrationStage::onKeyDown(SDL_Keycode keyCode)
 void TestCoregistrationStage::enter()
 {
     m_app->setCameraType(_cameraOrbit);
-    m_app->getPSMoveContext()->initFusion();
+    m_app->getPSMoveContext()->initFusion(m_app->getComputeCoregistrationStage()->getCoregistrationTransform());
 }
 
 void TestCoregistrationStage::render()
@@ -1486,7 +1502,8 @@ bool PSMoveContext::calibrateTracker()
     return success;
 }
 
-void PSMoveContext::initFusion()
+void PSMoveContext::initFusion(
+	const glm::mat4 &coregistrationTransform)
 {
     assert(m_tracker);
 
@@ -1499,7 +1516,7 @@ void PSMoveContext::initFusion()
     m_fusion = psmove_fusion_new(m_tracker, 1., 1000.);
 
     // Extract the co registration transform
-    m_PS3EyeToDK2CameraXform= glm::make_mat4(psmove_fusion_get_coregistration_matrix(m_fusion));
+	m_PS3EyeToDK2CameraXform = coregistrationTransform;
 }
 
 glm::mat4 PSMoveContext::computeWorldTransform(const glm::mat4 &dk2CameraToWorldTransform) const
@@ -2251,7 +2268,8 @@ void computeAndSaveCoregistrationTransform(
     const OVR::Matrix4f &camera_invxform,
     const OVR::Posef *dk2poses,
     const PSMove_3AxisVector *psmoveposes,
-    int poseCount)
+    int poseCount,
+	glm::mat4 &outCoregTransform)
 {
     Eigen::MatrixXf A(poseCount * 3, 15);  // X = A/b
     Eigen::VectorXf b(poseCount * 3);
@@ -2313,6 +2331,14 @@ void computeAndSaveCoregistrationTransform(
 
         fprintf(fp, "%f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f\n",
             x(0), x(1), x(2), x(3), x(4), x(5), x(6), x(7), x(8), x(9), x(10), x(11));
+
+		outCoregTransform = glm::mat4(1.f);
+		for (int i = 0; i < 12; i++)
+		{
+			int row_ix = i % 3;
+			int col_ix = (float(i) / 3.0);
+			outCoregTransform[col_ix][row_ix] = x(i);
+		}
 
         fclose(fp);
     }
