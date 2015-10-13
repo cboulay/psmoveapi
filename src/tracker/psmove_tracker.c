@@ -71,6 +71,8 @@
 #define SMOOTHING_SETTINGS_CSV "smoothing_settings.csv"
 #define SPHERE_RADIUS_CM 2.25
 
+#define MAX_CAMERA_INIT_QUERY_ATTEMPTS 100
+
 // Smoothing defaults
 static const PSMoveTrackerSmoothingSettings tracker_smoothing_default_settings = {
     .filter_do_2d_xy = 1,
@@ -276,6 +278,9 @@ static const struct PSMove_RGBValue preset_colors[N_PRESET_COLORS] = {
         { 0x00, 0x00, 0xFF }, /* blue */
     #endif
 };
+
+/* Last error posted by tracker initialization */
+enum PSMoveTracker_ErrorCode g_last_tracker_error_code = PSMove_Camera_Error_None;
 
 // -------- START: internal functions only
 
@@ -804,8 +809,8 @@ psmove_tracker_new_with_camera(int camera) {
 }
 
 PSMoveTracker *
-psmove_tracker_new_with_camera_and_settings(int camera, PSMoveTrackerSettings *settings) {
-
+psmove_tracker_new_with_camera_and_settings(int camera, PSMoveTrackerSettings *settings) 
+{
     PSMoveTracker* tracker = (PSMoveTracker*) calloc(1, sizeof(PSMoveTracker));
     tracker->settings = *settings;
     tracker->rHSV = cvScalar(
@@ -813,6 +818,8 @@ psmove_tracker_new_with_camera_and_settings(int camera, PSMoveTrackerSettings *s
         tracker->settings.color_saturation_filter_range,
         tracker->settings.color_value_filter_range, 0);
     tracker->storage = cvCreateMemStorage(0);
+
+    g_last_tracker_error_code= PSMove_Camera_Error_None;
 
     if (psmove_tracker_load_smoothing_settings(&(tracker->smoothing_settings)) == PSMove_False)
     {
@@ -850,7 +857,10 @@ psmove_tracker_new_with_camera_and_settings(int camera, PSMoveTrackerSettings *s
         free(tracker);
         return NULL;
     }
-    else { psmove_DEBUG("Successfully initialized camera_control.\n"); }
+    else 
+    {
+        psmove_DEBUG("Successfully initialized camera_control.\n");
+    }
 
     psmove_tracker_load_distortion(tracker);
 
@@ -898,10 +908,25 @@ psmove_tracker_new_with_camera_and_settings(int camera, PSMoveTrackerSettings *s
     psmove_tracker_set_exposure(tracker, tracker->settings.exposure_mode);
 
     // just query a frame so that we know the camera works
+    int query_frame_attempts= 0;
     IplImage* frame = NULL;
     enum PSMove_Bool new_frame = PSMove_False;
-    while (!frame || new_frame == PSMove_False) {
+    while ((!frame || new_frame == PSMove_False) && (query_frame_attempts < MAX_CAMERA_INIT_QUERY_ATTEMPTS)) 
+    {
         frame = camera_control_query_frame(tracker->cc, NULL, NULL, &new_frame);
+        ++query_frame_attempts;
+    }
+
+    // Bail if we failed to get a a valid video frame
+    if (query_frame_attempts >= MAX_CAMERA_INIT_QUERY_ATTEMPTS)
+    {
+        psmove_DEBUG("Failed to acquire a video frame from the tracker.\n");
+        g_last_tracker_error_code= PSMove_Camera_Query_Frame_Failure;
+
+        camera_control_delete(tracker->cc);
+        free(tracker);
+
+        return NULL;
     }
 
     // prepare ROI data structures
@@ -976,6 +1001,12 @@ psmove_tracker_new_with_camera_and_settings(int camera, PSMoveTrackerSettings *s
 #endif
 
     return tracker;
+}
+
+enum PSMoveTracker_ErrorCode
+psmove_tracker_get_last_error()
+{
+    return g_last_tracker_error_code;
 }
 
 void

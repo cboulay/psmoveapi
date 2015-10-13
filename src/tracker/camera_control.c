@@ -43,6 +43,8 @@
 #define PS3EYE_FOCAL_LENGTH_BLUE 554.2563  // Corresponds to 75 deg diagonal FOV
 #define PS3EYE_FOCAL_LENGTH_RED 776.3782   // Corresponds to 56 deg diagonal FOV
 
+extern enum PSMoveTracker_ErrorCode g_last_tracker_error_code;
+
 #if defined(CAMERA_CONTROL_USE_PS3EYE_DRIVER)
 
 /**
@@ -181,6 +183,7 @@ camera_control_new_with_settings(int cameraID, int width, int height, int framer
     int cams = ps3eye_count_connected();
     psmove_DEBUG("Found %i ps3eye(s) with CAMERA_CONTROL_USE_PS3EYE_DRIVER.\n", cams);
     if (cams <= cameraID) {
+        g_last_tracker_error_code= PSMove_Camera_Not_Found;
         free(cc);
         return NULL;
     }
@@ -193,6 +196,7 @@ camera_control_new_with_settings(int cameraID, int width, int height, int framer
     cc->eye = ps3eye_open(cameraID, width, height, framerate);
 
     if (cc->eye == NULL) {
+        g_last_tracker_error_code= PSMove_Camera_USB_Open_Failure;
         psmove_WARNING("Failed to open camera ID %d", cameraID);
         free(cc);
         return NULL;
