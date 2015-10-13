@@ -430,6 +430,9 @@ public:
     ComputeCoregistrationStage(App *app)
         : AppStage(app)
         , m_coregState(_CoregStageAttachPSMoveToDK2)
+        , m_poseCount(0)
+        , m_argc(0)
+        , m_argv(NULL)
     { }
 
     bool init(int argc, char** argv);
@@ -947,7 +950,8 @@ void PSMoveSetupStage::renderUI()
         renderer->renderText(10, 570, "Press space to retry blink calibration. Press backspace to reset the camera.");
         break;
     case _PSMoveSetupSucceeded:
-        renderer->renderText(10, 570, "Calibration succeeded! Press space to continue.");
+        renderer->renderText(10, 550, "Calibration succeeded! Press space to continue to coregistration.");
+        renderer->renderText(10, 570, "Press enter to skip to testing.");
         break;
     }
 }
@@ -993,6 +997,10 @@ void PSMoveSetupStage::onKeyDown(SDL_Keycode keyCode)
         if (keyCode == SDLK_SPACE)
         {
             m_app->setAppStage(_appStageComputeCoreg);
+        }
+        else if (keyCode == SDLK_RETURN)
+        {
+            m_app->setAppStage(_appStateTestCoreg);
         }
         break;
     }
