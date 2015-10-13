@@ -138,7 +138,8 @@ public:
     bool connectController();
     bool initTracker();
     bool calibrateTracker();
-    void initFusion(const glm::mat4 &coregistrationTransform);
+    void initFusion();
+    void initFusionWthCoregTransform(const glm::mat4 &coregistrationTransform);
 
     glm::mat4 computeWorldTransform(const glm::mat4 &dk2CameraToWorldTransform) const;
     void getTrackingCameraFrustum(const class DK2Context *dk2Context, TrackingCameraFrustum &outFrustum) const;
@@ -439,7 +440,11 @@ public:
 
     bool init(int argc, char** argv);
 
-	glm::mat4 getCoregistrationTransform() const { return m_coregTransform; }
+	bool getCoregistrationTransform(glm::mat4 &out_mat) const 
+    { 
+        out_mat= m_coregTransform;
+        return m_poseCount > 0;
+    }
 
     virtual void enter();
     virtual void update();
@@ -1247,8 +1252,18 @@ void ComputeCoregistrationStage::onKeyDown(SDL_Keycode keyCode)
 //-- AppStage : TestCoregistrationStage -----
 void TestCoregistrationStage::enter()
 {
+    glm::mat4 coreg_transform;
+
     m_app->setCameraType(_cameraOrbit);
-    m_app->getPSMoveContext()->initFusion(m_app->getComputeCoregistrationStage()->getCoregistrationTransform());
+
+    if (m_app->getComputeCoregistrationStage()->getCoregistrationTransform(coreg_transform))
+    {
+        m_app->getPSMoveContext()->initFusionWthCoregTransform(coreg_transform);
+    }
+    else
+    {
+        m_app->getPSMoveContext()->initFusion();
+    }
 }
 
 void TestCoregistrationStage::render()
@@ -1510,8 +1525,7 @@ bool PSMoveContext::calibrateTracker()
     return success;
 }
 
-void PSMoveContext::initFusion(
-	const glm::mat4 &coregistrationTransform)
+void PSMoveContext::initFusion()
 {
     assert(m_tracker);
 
@@ -1524,7 +1538,14 @@ void PSMoveContext::initFusion(
     m_fusion = psmove_fusion_new(m_tracker, 1., 1000.);
 
     // Extract the co registration transform
-	m_PS3EyeToDK2CameraXform = coregistrationTransform;
+	m_PS3EyeToDK2CameraXform= glm::make_mat4(psmove_fusion_get_coregistration_matrix(m_fusion));
+}
+
+void PSMoveContext::initFusionWthCoregTransform(
+	const glm::mat4 &coregistrationTransform)
+{
+    initFusion();
+    m_PS3EyeToDK2CameraXform = coregistrationTransform;
 }
 
 glm::mat4 PSMoveContext::computeWorldTransform(const glm::mat4 &dk2CameraToWorldTransform) const
