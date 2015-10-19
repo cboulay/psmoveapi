@@ -44,7 +44,9 @@ ADDAPI CameraControl *
 ADDCALL camera_control_new(int cameraID);
 
 ADDAPI CameraControl *
-ADDCALL camera_control_new_with_settings(int cameraID, int width, int height, int framerate, int cam_type);
+ADDCALL camera_control_new_with_settings(
+    int cameraID, int width, int height, int framerate, 
+    enum PSMoveTracker_Camera_API camera_api, enum PSMoveTracker_Camera_type cam_type, const char *path_to_camera_server_exe);
 
 ADDAPI void
 ADDCALL camera_control_read_calibration(CameraControl* cc,

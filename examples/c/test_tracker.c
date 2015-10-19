@@ -40,7 +40,7 @@
 #include "psmove_tracker.h"
 
 
-int main(int arg, char** args) {
+int main(int argc, char** argv) {
     int i;
     
     if (!psmove_init(PSMOVE_CURRENT_VERSION)) {
@@ -63,11 +63,30 @@ int main(int arg, char** args) {
     fprintf(stderr, "Trying to init PSMoveTracker...");
     PSMoveTrackerSettings settings;
     psmove_tracker_settings_set_default(&settings);
-    settings.exposure_mode = Exposure_LOW;
+    settings.exposure_mode = Exposure_MANUAL;
+    settings.camera_exposure=  (15 * 0xFFFF) / 255; // [0,255] -> [0, 0xffff]
     settings.color_mapping_max_age = 0;
     settings.camera_mirror = PSMove_True;
     settings.color_save_colormapping = PSMove_False;
     settings.color_list_start_ind = 3;  // Start with red if available.
+    settings.camera_api= PSMove_Camera_API_PS3EYE_LIBUSB;
+
+    if (argc > 1)
+    {
+        if (strcmp(argv[1], "libusb") == 0)
+        {
+            settings.camera_api= PSMove_Camera_API_PS3EYE_LIBUSB;
+        }
+        else if (strcmp(argv[1], "cleye") == 0)
+        {
+            settings.camera_api= PSMove_Camera_API_PS3EYE_CLEYE;
+        }
+        else if (strcmp(argv[1], "opencv") == 0)
+        {
+            settings.camera_api= PSMove_Camera_API_OPENCV;
+        }
+    }
+
     PSMoveTracker* tracker = psmove_tracker_new_with_settings(&settings);
     if (!tracker)
     {

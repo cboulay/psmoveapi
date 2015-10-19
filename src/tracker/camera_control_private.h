@@ -38,28 +38,29 @@
 #    include <windows.h>
 #endif
 
-#if defined(CAMERA_CONTROL_USE_CL_DRIVER)
-#    include "../external/CLEye/CLEyeMulticam.h"
+#if defined(CAMERA_CONTROL_HAS_CL_DRIVER)
+#    include "platform/camera_control_cleye_client_win32.h"
 #else
 #    define CL_DRIVER_REG_PATH "Software\\PS3EyeCamera\\Settings"
 #endif
 
-#if defined(CAMERA_CONTROL_USE_PS3EYE_DRIVER)
+#if defined(CAMERA_CONTROL_HAS_PS3EYE_DRIVER)
 #    include "ps3eyedriver.h"
 #endif
 
 struct _CameraControl {
 	int cameraID;
+    enum PSMoveTracker_Camera_API camera_api;
 	IplImage* frame3chUndistort;
 
-#if defined(CAMERA_CONTROL_USE_CL_DRIVER)
+#if defined(CAMERA_CONTROL_HAS_CL_DRIVER)
 	CLEyeCameraInstance camera;
 	IplImage* frame3ch;
 	IplImage* frame4ch;
 	PBYTE pCapBuffer;
 #endif
 
-#if defined(CAMERA_CONTROL_USE_PS3EYE_DRIVER)
+#if defined(CAMERA_CONTROL_HAS_PS3EYE_DRIVER)
     ps3eye_t *eye;
     IplImage *framebgr;
 #endif

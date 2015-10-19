@@ -139,7 +139,7 @@ public:
     bool initTracker();
     bool calibrateTracker();
     void initFusion();
-    void initFusionWthCoregTransform(const glm::mat4 &coregistrationTransform);
+    void initFusionWithCoregTransform(const glm::mat4 &coregistrationTransform);
 
     glm::mat4 computeWorldTransform(const glm::mat4 &dk2CameraToWorldTransform) const;
     void getTrackingCameraFrustum(const class DK2Context *dk2Context, TrackingCameraFrustum &outFrustum) const;
@@ -172,6 +172,7 @@ private:
     unsigned int m_buttons_down;
     unsigned int m_buttons_pressed;
     unsigned int m_buttons_released;
+    PSMoveTracker_Camera_API m_camera_api;
     bool m_use_custom_tracking_color;
     unsigned char m_custom_r, m_custom_g, m_custom_b;
     const char *m_lastErrorMessage;
@@ -1258,7 +1259,7 @@ void TestCoregistrationStage::enter()
 
     if (m_app->getComputeCoregistrationStage()->getCoregistrationTransform(coreg_transform))
     {
-        m_app->getPSMoveContext()->initFusionWthCoregTransform(coreg_transform);
+        m_app->getPSMoveContext()->initFusionWithCoregTransform(coreg_transform);
     }
     else
     {
@@ -1335,6 +1336,7 @@ PSMoveContext::PSMoveContext()
     , m_buttons_down(0)
     , m_buttons_pressed(0)
     , m_buttons_released(0)
+    , m_camera_api(PSMove_Camera_API_PS3EYE_LIBUSB)
     , m_use_custom_tracking_color(false)
     , m_custom_r(0)
     , m_custom_g(0)
@@ -1365,15 +1367,36 @@ bool PSMoveContext::init(int argc, char** argv)
         success = false;
     }
 
-    if (success && argc >= 4) 
+    if (success) 
     {
-        m_custom_r= (unsigned char)atoi(argv[1]);
-        m_custom_g= (unsigned char)atoi(argv[2]);
-        m_custom_b= (unsigned char)atoi(argv[3]);
-        m_use_custom_tracking_color= true;
+        m_camera_api= PSMove_Camera_API_PS3EYE_LIBUSB;
 
-        Log_INFO("PSMoveContext::init()", "Setting LEDS for controller 1 from command-line r: %i, g: %i, b: %i", 
-            m_custom_r, m_custom_g, m_custom_b);        
+        if (argc >= 2)
+        {
+            if (strcmp(argv[1], "libusb") == 0)
+            {
+                m_camera_api= PSMove_Camera_API_PS3EYE_LIBUSB;
+            }
+            else if (strcmp(argv[1], "cleye") == 0)
+            {
+                m_camera_api= PSMove_Camera_API_PS3EYE_CLEYE;
+            }
+            else if (strcmp(argv[1], "opencv") == 0)
+            {
+                m_camera_api= PSMove_Camera_API_OPENCV;
+            }
+        }
+
+        if (argc >= 5)
+        {
+            m_custom_r= (unsigned char)atoi(argv[1]);
+            m_custom_g= (unsigned char)atoi(argv[2]);
+            m_custom_b= (unsigned char)atoi(argv[3]);
+            m_use_custom_tracking_color= true;
+
+            Log_INFO("PSMoveContext::init()", "Setting LEDS for controller 1 from command-line r: %i, g: %i, b: %i", 
+                m_custom_r, m_custom_g, m_custom_b);
+        }
     }
 
     return success;
@@ -1398,9 +1421,10 @@ bool PSMoveContext::initTracker()
         PSMoveTrackerSettings settings;
         psmove_tracker_settings_set_default(&settings);
         settings.color_mapping_max_age = 0;
-        settings.exposure_mode = Exposure_LOW;
+        settings.exposure_mode = Exposure_MANUAL;
         settings.camera_mirror = PSMove_True;
-        settings.camera_type= PSMove_Camera_PS3EYE_BLUEDOT; // Wider FOV
+        settings.camera_type= PSMove_Focal_Length_PS3EYE_BLUEDOT; // Wider FOV
+        settings.camera_api= m_camera_api;
         settings.use_fitEllipse = 1;
 
         m_tracker = psmove_tracker_new_with_settings(&settings);
@@ -1541,7 +1565,7 @@ void PSMoveContext::initFusion()
 	m_PS3EyeToDK2CameraXform= glm::make_mat4(psmove_fusion_get_coregistration_matrix(m_fusion));
 }
 
-void PSMoveContext::initFusionWthCoregTransform(
+void PSMoveContext::initFusionWithCoregTransform(
 	const glm::mat4 &coregistrationTransform)
 {
     initFusion();
@@ -1589,12 +1613,12 @@ void PSMoveContext::getTrackingCameraFrustum(
 
         switch(settings.camera_type)
         {
-        case PSMove_Camera_PS3EYE_BLUEDOT:
+        case PSMove_Focal_Length_PS3EYE_BLUEDOT:
         default:
             frustum.HFOV= glm::radians(60.f);
             frustum.VFOV= glm::radians(45.f);
             break;
-        case PSMove_Camera_PS3EYE_REDDOT:
+        case PSMove_Focal_Length_PS3EYE_REDDOT:
             frustum.HFOV= glm::radians(56.f);
             frustum.VFOV= glm::radians(56.f);
             break;

@@ -12,13 +12,13 @@ option(PSMOVE_BUILD_TRACKER "Build the Tracker module (needs OpenCV)" ON)
 set(OpenCV_DIR ${ROOT_DIR}/external/opencv/build CACHE PATH "Path to local OpenCV source tree" FORCE)
 
 # Enable tweaks (e.g. registry settings on Windows, ...) for PS Eye
-option(PSMOVE_USE_PSEYE "Enable tweaks for the PS Eye camera" ON)
+option(PSMOVE_USE_REGISTRY "Enable registry tweaks for the PS Eye camera on windows" ON)
 
-# Use the CL Eye SDK to interface with the PS Eye camera (Windows only)
-option(PSMOVE_USE_CL_EYE_SDK "Use the CL Eye SDK driver on Windows" OFF)
+# Allow the use of the CL Eye SDK to interface with the PS Eye camera (Windows only)
+option(PSMOVE_HAS_CL_EYE_SDK "Use the CL Eye SDK driver on Windows" OFF)
 
 # Use the PS3EYEDriver to interface with the PS Eye camera (OS X and Windows only)
-option(PSMOVE_USE_PS3EYE_DRIVER "Use the PS3EYEDriver on OS X or Windows" OFF)
+option(PSMOVE_HAS_PS3EYE_DRIVER "Use the PS3EYEDriver on OS X or Windows" OFF)
 
 # To show the OpenCV camera capture window everytime (useful for debugging)
 option(PSMOVE_USE_DEBUG_CAPTURE "Always show camera capture input" OFF)
@@ -26,7 +26,7 @@ option(PSMOVE_USE_DEBUG_CAPTURE "Always show camera capture input" OFF)
 # Write debugging images for tracking calibration to home directory
 option(PSMOVE_USE_TRACKER_TRACE "Write tracker calibration images to disk" OFF)
 
-IF(PSMOVE_USE_PS3EYE_DRIVER)
+IF(PSMOVE_HAS_PS3EYE_DRIVER)
     # PS3EYEDriver is based on GPL'd code
     set(INFO_LICENSE "GPL")
 ENDIF()
@@ -72,7 +72,8 @@ IF(PSMOVE_BUILD_TRACKER)
             ${AVFOUNDATION})
     ELSEIF(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
         list(APPEND PSMOVEAPI_TRACKER_PLATFORM_SRC
-            ${CMAKE_CURRENT_LIST_DIR}/platform/camera_control_win32.c)
+            ${CMAKE_CURRENT_LIST_DIR}/platform/camera_control_win32.c
+            ${CMAKE_CURRENT_LIST_DIR}/platform/camera_control_cleye_client_win32.cpp)
         list(APPEND PSMOVEAPI_TRACKER_REQUIRED_LIBS vfw32 comctl32)
         #OpenCV extra dependencies: comctl32 gdi32 ole32 setupapi ws2_32 vfw32
         IF(MINGW)
@@ -88,9 +89,9 @@ ENDIF(PSMOVE_BUILD_TRACKER)
 # 3 - Cameras
 
 # PS3EYEDriver
-set(INFO_USE_PS3EYE_DRIVER "No (Windows and OS X only)")
-IF (PSMOVE_USE_PS3EYE_DRIVER AND (${CMAKE_SYSTEM_NAME} MATCHES "Darwin" OR ${CMAKE_SYSTEM_NAME} MATCHES "Windows"))
-    add_definitions(-DCAMERA_CONTROL_USE_PS3EYE_DRIVER)
+set(INFO_HAS_PS3EYE_DRIVER "No (Windows and OS X only)")
+IF (PSMOVE_HAS_PS3EYE_DRIVER AND (${CMAKE_SYSTEM_NAME} MATCHES "Darwin" OR ${CMAKE_SYSTEM_NAME} MATCHES "Windows"))
+    add_definitions(-DCAMERA_CONTROL_HAS_PS3EYE_DRIVER)
     list(APPEND PSMOVEAPI_TRACKER_PLATFORM_SRC
                 ${ROOT_DIR}/external/PS3EYEDriver/src/ps3eye.cpp
                 ${ROOT_DIR}/external/PS3EYEDriver/src/ps3eyedriver.cpp)
@@ -98,35 +99,36 @@ IF (PSMOVE_USE_PS3EYE_DRIVER AND (${CMAKE_SYSTEM_NAME} MATCHES "Darwin" OR ${CMA
     find_package(USB1 REQUIRED)
     include_directories(${LIBUSB_INCLUDE_DIR})
     list(APPEND PSMOVEAPI_TRACKER_REQUIRED_LIBS ${LIBUSB_LIBRARIES})
-    set(INFO_USE_PS3EYE_DRIVER "Yes")
+    set(INFO_HAS_PS3EYE_DRIVER "Yes")
 ELSE()
-    set(PSMOVE_USE_PS3EYE_DRIVER OFF)
-    set(INFO_USE_PS3EYE_DRIVER "No (disabled)")
+    set(PSMOVE_HAS_PS3EYE_DRIVER OFF)
+    set(INFO_HAS_PS3EYE_DRIVER "No (disabled)")
 ENDIF()
 
-IF(PSMOVE_USE_PS3EYE_DRIVER)
+IF(PSMOVE_HAS_PS3EYE_DRIVER)
     # PS3EYEDriver is based on GPL'd code
     set(INFO_LICENSE "GPL")
 ENDIF()
 
 #CL_EYE_DRIVER
-set(INFO_USE_CL_EYE "No (Windows 32-bit only)")
-IF(PSMOVE_USE_PSEYE
-    AND PSMOVE_USE_CL_EYE_SDK
-    AND ${CMAKE_SYSTEM_NAME} MATCHES "Windows"
-    AND NOT(${CMAKE_C_SIZEOF_DATA_PTR} EQUAL 8))
+set(INFO_HAS_CL_EYE "No (Windows only)")
+IF(PSMOVE_HAS_CL_EYE_SDK AND ${CMAKE_SYSTEM_NAME} MATCHES "Windows")
     find_path(CL_EYE_SDK_PATH Bin/CLEyeMulticam.dll
         HINTS "C:/Program Files/Code Laboratories/CL-Eye Platform SDK"
         "C:/Program Files (x86)/Code Laboratories/CL-Eye Platform SDK")
     IF(CL_EYE_SDK_PATH)
-        add_definitions(-DCAMERA_CONTROL_USE_CL_DRIVER)
-        list(APPEND PSMOVEAPI_TRACKER_REQUIRED_LIBS CLEyeMulticam)
+        add_definitions(-DCAMERA_CONTROL_HAS_CL_DRIVER)
+        # Only directly link against the CLEye library in 32-bit systems
+        IF(${CMAKE_C_SIZEOF_DATA_PTR} EQUAL 4)
+            list(APPEND PSMOVEAPI_TRACKER_REQUIRED_LIBS CLEyeMulticam)
+        ENDIF()
         file(COPY ${CL_EYE_SDK_PATH}/Bin/CLEyeMulticam.dll
             DESTINATION ${ROOT_DIR}/external/libs)
-        set(INFO_USE_CL_EYE "Yes (SDK version)")
+        set(INFO_HAS_CL_EYE "Yes (SDK version)")
         # XXX: If this crashes, disable compiler optimizations
     ELSE()  # Fall back to registry version
-        set(INFO_USE_CL_EYE "Yes (registry version)")
+        add_definitions(-DCAMERA_CONTROL_HAS_CL_DRIVER)
+        set(INFO_HAS_CL_EYE "Yes (registry version)")
     ENDIF()
 ENDIF()
 
@@ -166,6 +168,15 @@ if(PSMOVE_BUILD_TRACKER)
         ${PSMOVEAPI_TRACKER_REQUIRED_LIBS})
     set_target_properties(psmoveapi_tracker_static PROPERTIES
         COMPILE_FLAGS -DBUILDING_STATIC_LIBRARY)
+    
+    # Always build the cl eye server as a 32-bit application 
+    # But only bother building it if this is a 64-bit system
+    IF(PSMOVE_HAS_CL_EYE_SDK AND ${CMAKE_C_SIZEOF_DATA_PTR} EQUAL 8)
+        add_executable(psmove_cleye_server ${CMAKE_CURRENT_LIST_DIR}/platform/camera_control_cleye_server_win32.cpp)
+        set_target_properties(psmove_cleye_server PROPERTIES PLATFORM "win32")
+        target_link_libraries(psmove_cleye_server CLEyeMulticam)       
+        list(APPEND PSMOVEAPI_INSTALL_TARGETS psmove_cleye_server)        
+    endif()
 endif()
 
 message("")
@@ -173,5 +184,5 @@ message("  Tracker")
 message("    Tracker library:  " ${INFO_BUILD_TRACKER})
 feature_use_info("PS Eye support:   " PSMOVE_USE_PSEYE)
 feature_use_info("HTML tracing:     " PSMOVE_USE_TRACKER_TRACE)
-message("    Use CL Eye:   " ${INFO_USE_CL_EYE})
-message("    Use PS3EYEDriver: " ${INFO_USE_PS3EYE_DRIVER})
+message("    Use CL Eye:   " ${INFO_HAS_CL_EYE})
+message("    Use PS3EYEDriver: " ${INFO_HAS_PS3EYE_DRIVER})

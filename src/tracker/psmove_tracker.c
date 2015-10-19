@@ -91,10 +91,12 @@ static const PSMoveTrackerSettings tracker_default_settings = {
     .camera_auto_gain = PSMove_False,
     .camera_gain = 0,
     .camera_auto_white_balance = PSMove_False,
-    .camera_exposure = (255 * 15) / 0xFFFF,
+    .camera_exposure = (15 * 0xFFFF) / 255,
     .camera_brightness = 0,
     .camera_mirror = PSMove_True,
-    .camera_type = PSMove_Camera_PS3EYE_BLUEDOT,
+    .camera_type = PSMove_Focal_Length_PS3EYE_BLUEDOT,
+    .camera_api= PSMove_Camera_API_PS3EYE_LIBUSB,
+    .path_to_cleye_server_exe= '\0',
     .exposure_mode = Exposure_LOW,
     .calibration_blink_delay = 200,
     .calibration_diff_t = 20,
@@ -549,34 +551,45 @@ void
 psmove_tracker_set_exposure(PSMoveTracker *tracker,
         enum PSMoveTracker_Exposure exposure)
 {
-    psmove_return_if_fail(tracker != NULL);
-    tracker->settings.exposure_mode = exposure;
-
-    float target_luminance = 0;
-    switch (tracker->settings.exposure_mode) {
-        case Exposure_LOW:
-            target_luminance = 8;
-            break;
-        case Exposure_MEDIUM:
-            target_luminance = 25;
-            break;
-        case Exposure_HIGH:
-            target_luminance = 100;
-            break;
-        default:
-            psmove_DEBUG("Invalid exposure mode: %d\n", exposure);
-            break;
-    }
-
-    #if defined(__APPLE__) && !defined(CAMERA_CONTROL_USE_PS3EYE_DRIVER)
+    #ifdef __APPLE__
+    if (tracker->settings.camera_api != PSMove_Camera_API_PS3EYE_CLEYE)
+    {
         camera_control_initialize();
+    }
     #endif
 
-    // Determine the camera exposure setting required to hit the target luminance
-    tracker->settings.camera_exposure = psmove_tracker_adapt_to_light(tracker, target_luminance);
+    if (exposure == Exposure_MANUAL)
+    {
+        camera_control_set_parameters(tracker->cc, 0, 0, 0, tracker->settings.camera_exposure,
+                0, 0xffff, 0xffff, 0xffff, -1, -1);
+    }
+    else
+    {
+        psmove_return_if_fail(tracker != NULL);
+        tracker->settings.exposure_mode = exposure;
 
-    camera_control_set_parameters(tracker->cc, 0, 0, 0, tracker->settings.camera_exposure,
-            0, 0xffff, 0xffff, 0xffff, -1, -1);
+        float target_luminance = 0;
+        switch (tracker->settings.exposure_mode) {
+            case Exposure_LOW:
+                target_luminance = 8;
+                break;
+            case Exposure_MEDIUM:
+                target_luminance = 25;
+                break;
+            case Exposure_HIGH:
+                target_luminance = 100;
+                break;
+            default:
+                psmove_DEBUG("Invalid exposure mode: %d\n", exposure);
+                break;
+        }
+
+        // Determine the camera exposure setting required to hit the target luminance
+        tracker->settings.camera_exposure = psmove_tracker_adapt_to_light(tracker, target_luminance);
+
+        camera_control_set_parameters(tracker->cc, 0, 0, 0, tracker->settings.camera_exposure,
+                0, 0xffff, 0xffff, 0xffff, -1, -1);
+    }
 }
 
 enum PSMoveTracker_Exposure
@@ -811,6 +824,12 @@ psmove_tracker_new_with_camera(int camera) {
 PSMoveTracker *
 psmove_tracker_new_with_camera_and_settings(int camera, PSMoveTrackerSettings *settings) 
 {
+    #ifdef __APPLE__
+    enum PSMove_Bool is_platform_osx= PSMove_True;
+    #else
+    enum PSMove_Bool is_platform_osx= PSMove_False;
+    #endif 
+
     PSMoveTracker* tracker = (PSMoveTracker*) calloc(1, sizeof(PSMoveTracker));
     tracker->settings = *settings;
     tracker->rHSV = cvScalar(
@@ -828,20 +847,41 @@ psmove_tracker_new_with_camera_and_settings(int camera, PSMoveTrackerSettings *s
 
     psmove_tracker_set_smoothing_type(tracker, tracker->smoothing_settings.filter_3d_type);
 
-#if defined(__APPLE__) && !defined(CAMERA_CONTROL_USE_PS3EYE_DRIVER)
-    // Assume iSight. Calibration will be done with with sphere against camera
-    // to avoid auto-balancing due to background light
-    PSMove *move = psmove_connect();
-    psmove_set_leds(move, 255, 255, 255);
-    psmove_update_leds(move);
+    // Verify that we support the request camera api in the current build configuration
+    switch(tracker->settings.camera_api)
+    {
+    case PSMove_Camera_API_PS3EYE_LIBUSB:
+        #ifndef CAMERA_CONTROL_HAS_PS3EYE_DRIVER)
+        psmove_WARNING("psmove_tracker_new_with_camera_and_settings: libusb ps3 eye api not supported. Falling back to opencv api.");
+        tracker->settings.camera_api= PSMove_Camera_API_OPENCV;
+        #endif // CAMERA_CONTROL_HAS_PS3EYE_DRIVER
+        break;
+    case PSMove_Camera_API_PS3EYE_CLEYE:
+        #ifndef CAMERA_CONTROL_HAS_CL_DRIVER
+        psmove_WARNING("psmove_tracker_new_with_camera_and_settings: cleye ps3 eye api not supported. Falling back to opencv api.");
+        tracker->settings.camera_api= PSMove_Camera_API_OPENCV;
+        #endif
+        break;
+    case PSMove_Camera_API_OPENCV:
+        // Supported by default
+        break;
+    }
 
-    printf("Cover the iSight camera with the sphere and press the Move button\n");
-    _psmove_wait_for_button(move, Btn_MOVE);
-    psmove_set_leds(move, 0, 0, 0);
-    psmove_update_leds(move);
-    psmove_set_leds(move, 255, 255, 255);
-    psmove_update_leds(move);
-#endif
+    if (is_platform_osx == PSMove_True && tracker->settings.camera_api != PSMove_Camera_API_PS3EYE_LIBUSB)
+    {
+        // Assume iSight. Calibration will be done with with sphere against camera
+        // to avoid auto-balancing due to background light
+        PSMove *move = psmove_connect();
+        psmove_set_leds(move, 255, 255, 255);
+        psmove_update_leds(move);
+
+        printf("Cover the iSight camera with the sphere and press the Move button\n");
+        _psmove_wait_for_button(move, Btn_MOVE);
+        psmove_set_leds(move, 0, 0, 0);
+        psmove_update_leds(move);
+        psmove_set_leds(move, 255, 255, 255);
+        psmove_update_leds(move);
+    }
 
     // start the video capture device for tracking
 
@@ -851,7 +891,9 @@ psmove_tracker_new_with_camera_and_settings(int camera, PSMoveTrackerSettings *s
                                                    tracker->settings.camera_frame_width,
                                                    tracker->settings.camera_frame_height,
                                                    tracker->settings.camera_frame_rate,
-                                                   tracker->settings.camera_type);
+                                                   tracker->settings.camera_api,
+                                                   tracker->settings.camera_type,
+                                                   tracker->settings.path_to_cleye_server_exe);
     if (!tracker->cc)
     {
         free(tracker);
@@ -869,36 +911,37 @@ psmove_tracker_new_with_camera_and_settings(int camera, PSMoveTrackerSettings *s
     camera_control_backup_system_settings(tracker->cc, filename);
     free(filename);
 
-#if !defined(__APPLE__) || defined(CAMERA_CONTROL_USE_PS3EYE_DRIVER)
-    // try to load color mapping data (not on Mac OS X for now, because the
-    // automatic white balance means we get different colors every time)
-    filename = psmove_util_get_file_path(COLOR_MAPPING_DAT);
-    FILE *fp = NULL;
-    time_t now = time(NULL);
-    struct stat st;
-    memset(&st, 0, sizeof(st));
+    if (is_platform_osx == PSMove_False || tracker->settings.camera_api == PSMove_Camera_API_PS3EYE_LIBUSB)
+    {
+        // try to load color mapping data (not on Mac OS X for now, because the
+        // automatic white balance means we get different colors every time)
+        filename = psmove_util_get_file_path(COLOR_MAPPING_DAT);
+        FILE *fp = NULL;
+        time_t now = time(NULL);
+        struct stat st;
+        memset(&st, 0, sizeof(st));
 
-    if (stat(filename, &st) == 0 && now != (time_t)-1) {
-        if (st.st_mtime >= (now - settings->color_mapping_max_age)) {
-            fp = psmove_file_open(filename, "rb");
-        } else {
-            printf("%s is too old - not restoring colors.\n", filename);
-        }
-    }
-
-    if (fp) {
-        if (!fread(&(tracker->color_mapping),
-                    sizeof(struct ColorMappingRingBuffer),
-                    1, fp)) {
-            psmove_WARNING("Cannot read data from: %s\n", filename);
-        } else {
-            printf("color mappings restored.\n");
+        if (stat(filename, &st) == 0 && now != (time_t)-1) {
+            if (st.st_mtime >= (now - settings->color_mapping_max_age)) {
+                fp = psmove_file_open(filename, "rb");
+            } else {
+                printf("%s is too old - not restoring colors.\n", filename);
+            }
         }
 
-        psmove_file_close(fp);
+        if (fp) {
+            if (!fread(&(tracker->color_mapping),
+                        sizeof(struct ColorMappingRingBuffer),
+                        1, fp)) {
+                psmove_WARNING("Cannot read data from: %s\n", filename);
+            } else {
+                printf("color mappings restored.\n");
+            }
+
+            psmove_file_close(fp);
+        }
+        free(filename);
     }
-    free(filename);
-#endif
 
     // Default to the distance parameters for the PS Eye camera
     tracker->distance_parameters = pseye_distance_parameters;
@@ -992,12 +1035,15 @@ psmove_tracker_new_with_camera_and_settings(int camera, PSMoveTrackerSettings *s
     int kc = (ks + 1) / 2; // Kernel Center
     tracker->kCalib = cvCreateStructuringElementEx(ks, ks, kc, kc, CV_SHAPE_RECT, NULL);
 
-#if defined(__APPLE__) && !defined(CAMERA_CONTROL_USE_PS3EYE_DRIVER)
-    printf("Move the controller away and press the Move button\n");
-    _psmove_wait_for_button(move, Btn_MOVE);
-    psmove_set_leds(move, 0, 0, 0);
-    psmove_update_leds(move);
-    psmove_disconnect(move);
+#if defined(__APPLE__)
+    if (tracker->settings.camera_api != PSMove_Camera_API_PS3EYE_LIBUSB)
+    {
+        printf("Move the controller away and press the Move button\n");
+        _psmove_wait_for_button(move, Btn_MOVE);
+        psmove_set_leds(move, 0, 0, 0);
+        psmove_update_leds(move);
+        psmove_disconnect(move);
+    }
 #endif
 
     return tracker;
@@ -2291,11 +2337,9 @@ psmove_tracker_adapt_to_light(PSMoveTracker *tracker, float target_luminance)
     float current_exposure = minimum_exposure;
     float last_exposure = current_exposure;
     //float current_exposure = (maximum_exposure + minimum_exposure) / 2.;
-    float last_saturation = 0.0;
+    float last_saturation_score = 0.0;
     float next_step = 0;
     float step_size = maximum_exposure - minimum_exposure;
-    CvScalar imgColor;
-    CvScalar imgHSV;
 
     /*
     if (target_luminance == 0) {
@@ -2320,12 +2364,15 @@ psmove_tracker_adapt_to_light(PSMoveTracker *tracker, float target_luminance)
         assert(frame != NULL);
 
         // calculate the average color and luminance (energy)
-        imgColor = cvAvg(frame, NULL);
-        imgHSV = th_brg2hsv(imgColor);
+        CvScalar imgColor = cvAvg(frame, NULL);
+        CvScalar imgHSV = th_brg2hsv(imgColor);
         float luminance = (float)th_color_avg(imgColor);
+        float luminance_error= fabs(luminance - target_luminance);
+        float saturation = (float)imgHSV.val[1];
+        float saturation_score= (saturation / MAX(luminance_error,1.0));
 
-        psmove_DEBUG("Exposure: %.2f, Luminance: %.2f, Saturation: %.2f\n",
-                     current_exposure, luminance, imgHSV.val[1]);
+        psmove_DEBUG("Exp: %.2f, Lum: %.2f (Err: %.2f), Sat: %.2f, Score: %.2f\n",
+                     current_exposure, luminance, luminance_error, saturation, saturation_score);
         
         /*
         if (fabsf(luminance - target_luminance) < 1) {
@@ -2334,13 +2381,13 @@ psmove_tracker_adapt_to_light(PSMoveTracker *tracker, float target_luminance)
          */
 
         // Binary search for the best exposure setting
-        if ((imgHSV.val[1] / MAX(fabs(luminance - target_luminance),1.0)) > last_saturation)  // Getting better!
+        if (saturation_score > last_saturation_score)  // Getting better!
         {
             if (current_exposure > last_exposure) // due to increase
             {
                 next_step = step_size; // keep increasing
             }
-            else  // due to decreae
+            else  // due to decrease
             {
                 next_step = -step_size; // keep decreasing
             }
@@ -2351,13 +2398,13 @@ psmove_tracker_adapt_to_light(PSMoveTracker *tracker, float target_luminance)
             {
                 next_step = -step_size; // try decreasing
             }
-            else  // due to decreae
+            else  // due to decrease
             {
                 next_step = step_size; // try increasing
             }
         }
         last_exposure = current_exposure;
-        last_saturation = imgHSV.val[1] / MAX(fabs(luminance - target_luminance), 1.0);
+        last_saturation_score = saturation_score;
         
         // Prepare for next step
         current_exposure += next_step;
