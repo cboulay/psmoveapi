@@ -10,3 +10,6 @@
 [submodule "external/SDL2"]
 	path = external/SDL2
 	url = https://github.com/spurious/SDL-mirror.git
+[submodule "external/eigen"]
+	path = external/eigen
+	url = https://github.com/RLovelett/eigen.git
