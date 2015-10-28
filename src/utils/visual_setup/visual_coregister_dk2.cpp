@@ -1744,7 +1744,11 @@ void DK2Context::destroy()
 void DK2Context::update()
 {
     // Get DK2 tracking state (contains pose)
+#ifdef _WIN32
+	m_dk2state = ovr_GetTrackingState(m_HMD, 0.0, ovrFalse);
+#else
     m_dk2state = ovr_GetTrackingState(m_HMD, 0.0);
+#endif
     m_dk2pose = m_dk2state.HeadPose.ThePose;
     m_dk2pose.Rotation.Normalize();
     m_dk2pose.Translation *= METERS_TO_CENTIMETERS;

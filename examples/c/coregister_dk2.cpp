@@ -21,7 +21,11 @@ OVR::Matrix4f getDK2CameraInv44(ovrHmd HMD) {
 
     ovrTrackingState dk2state;
 
+#ifdef _WIN32
+	dk2state = ovr_GetTrackingState(HMD, 0.0, ovrFalse);
+#else
     dk2state = ovr_GetTrackingState(HMD, 0.0);
+#endif
     OVR::Posef campose(dk2state.CameraPose);
     campose.Rotation.Normalize();  // Probably does nothing as the SDK returns normalized quats anyway.
     campose.Translation *= 100.0;  // m -> cm
@@ -199,7 +203,11 @@ int main(int arg, char** args) {
         }
 
         // Get DK2 tracking state (contains pose)
+#ifdef _WIN32
+		dk2state = ovr_GetTrackingState(HMD, 0.0, ovrFalse);
+#else
         dk2state = ovr_GetTrackingState(HMD, 0.0);
+#endif
         dk2pose = dk2state.HeadPose.ThePose;
         dk2pose.Rotation.Normalize();
         dk2pose.Translation *= 100.0;
