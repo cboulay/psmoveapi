@@ -59,12 +59,11 @@ Requirements
     Optional - Only required if you are building the coregistration tool
     `cd external`
     `git clone https://github.com/nothings/stb.git`
-	
+
 7. Oculus SDK - Required if building the coregistration tool.
-	Download OculusSDK from [here](https://developer.oculus.com/downloads/pc/0.8.0.0-beta/Oculus_SDK_for_Windows/)
-	Copy the folder `OculusSDK\LibOVR` from the zip to <psmoveapi>/external/
-	
-    
+    Download OculusSDK from [here](https://developer.oculus.com/downloads/pc/0.8.0.0-beta/Oculus_SDK_for_Windows/)
+    Copy the folder `OculusSDK\LibOVR` from the zip to <psmoveapi>/external/
+
 8. Build psmoveapi
 
     Still in the VS2013 command prompt:
@@ -80,9 +79,9 @@ Requirements
     Build the solution.
     You can also build the Debug solution.
     
-8. Read [this Wiki](https://github.com/cboulay/psmove-ue4/wiki) for windows-specific information on pairing and connecting the psmove controller and on using the PS3Eye camera.
+9. Read [this Wiki](https://github.com/cboulay/psmove-ue4/wiki) for windows-specific information on pairing and connecting the psmove controller and on using the PS3Eye camera.
 
-9. Start one of the desired test applications
+10. Start one of the desired test applications
 
     If you previously chose to build the example applications (which is the
     default), you can then run
