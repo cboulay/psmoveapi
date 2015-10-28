@@ -503,8 +503,8 @@ psmove_calibration_load(PSMoveCalibration *calibration)
         psmove_file_close(fp);
         return 0;
     }
-    if (fread(&(calibration->flags),
-              sizeof(calibration->flags), 1, fp) != 1) {
+	int res = fread(&(calibration->flags), sizeof(calibration->flags), 1, fp);
+	if (res != 1) {
         psmove_CRITICAL("Unable to read USB calibration");
         psmove_file_close(fp);
         return 0;

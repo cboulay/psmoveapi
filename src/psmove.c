@@ -88,7 +88,7 @@
 #define PSMOVE_BUFFER_SIZE 49
 
 /* Buffer size for the Bluetooth address get request */
-#define PSMOVE_BTADDR_GET_SIZE 16
+#define PSMOVE_BTADDR_GET_SIZE 17
 
 /* Buffer size for the Bluetooth address set request */
 #define PSMOVE_BTADDR_SET_SIZE 23
@@ -509,6 +509,7 @@ psmove_count_connected_hidapi()
          * The one with "&col01#" in the path is the one we will get most of our data from. Only count this one.
          * The one with "&col02#" in the path is the one we will get the bluetooth address from.
          **/
+		psmove_DEBUG("enumerating... hid path: %s\n", cur_dev->path);
         if (strstr(cur_dev->path, "&col01#") == NULL) {
             count--;
         }
@@ -547,6 +548,8 @@ psmove_count_connected()
 PSMove *
 psmove_connect_internal(wchar_t *serial, char *path, int id)
 {
+	psmove_DEBUG("psmove_connect_internal(%ls, %s)\n", serial, path);
+
     char *tmp;
 
     PSMove *move = (PSMove*)calloc(1, sizeof(PSMove));
@@ -581,10 +584,12 @@ psmove_connect_internal(wchar_t *serial, char *path, int id)
     p[5] = '2';
     psmove_return_val_if_fail((p = strstr(move->device_path_addr, "&0000#")) != NULL, NULL);
     p[4] = '1';
+	psmove_DEBUG("move->handle_addr = hid_open_path(%s)\n", move->device_path_addr);
     move->handle_addr = hid_open_path(move->device_path_addr);
     hid_set_nonblocking(move->handle_addr, 1);
 
     move->device_path = strdup(path);
+	psmove_DEBUG("move->handle = hid_open_path(%s)\n", move->device_path);
     move->handle = hid_open_path(move->device_path);
 
 #else
@@ -867,6 +872,7 @@ psmove_connect_by_id(int id)
     cur_dev = devs;
     while (cur_dev) {
 #ifdef _WIN32
+		psmove_DEBUG("hid path: %s\n", cur_dev->path);
         if (strstr(cur_dev->path, "&col01#") != NULL) {
 #endif
             if (count == id) {
@@ -949,6 +955,10 @@ _psmove_get_calibration_blob(PSMove *move, char **dest, size_t *size)
     unsigned char calibration[PSMOVE_CALIBRATION_BLOB_SIZE];
 
     unsigned char cal[PSMOVE_CALIBRATION_SIZE];
+	int tocopy = sizeof(cal);
+#ifdef _WIN32
+	tocopy -= sizeof(unsigned char);
+#endif
     int res;
     int x;
 
@@ -965,7 +975,8 @@ _psmove_get_calibration_blob(PSMove *move, char **dest, size_t *size)
                 "https://github.com/thp/psmoveapi/issues/108");
         }
 #endif
-        psmove_return_val_if_fail(res == PSMOVE_CALIBRATION_SIZE, 0);
+
+		psmove_return_val_if_fail(res == PSMOVE_CALIBRATION_SIZE, 0);
 
         if (cal[1] == 0x00) {
             /* First block */
@@ -973,18 +984,18 @@ _psmove_get_calibration_blob(PSMove *move, char **dest, size_t *size)
             src_offset = 0;
         } else if (cal[1] == 0x01) {
             /* Second block */
-            dest_offset = PSMOVE_CALIBRATION_SIZE;
+			dest_offset = tocopy;
             src_offset = 2;
         } else if (cal[1] == 0x82) {
             /* Third block */
-            dest_offset = 2*PSMOVE_CALIBRATION_SIZE - 2;
+			dest_offset = (2 * tocopy) - 2;
             src_offset = 2;
         } else {
             return 0;
         }
 
         memcpy(calibration+dest_offset, cal+src_offset,
-                sizeof(cal)-src_offset);
+			tocopy - src_offset);
     }
 
     *dest = (char*)malloc(sizeof(calibration));
