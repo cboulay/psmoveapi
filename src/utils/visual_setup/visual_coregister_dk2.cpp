@@ -47,10 +47,10 @@
 
 //-- macros -----
 #define Log_INFO(section, format, ...) \
-    fprintf(stdout, "INFO [" section "] " format "\n", __VA_ARGS__)
+    fprintf(stdout, "INFO [" section "] " format "\n", ## __VA_ARGS__)
 
 #define Log_ERROR(section, format, ...) \
-    fprintf(stderr, "ERROR [" section "] " format "\n", __VA_ARGS__)
+    fprintf(stderr, "ERROR [" section "] " format "\n", ## __VA_ARGS__)
 
 //-- typedefs -----
 #ifndef OVR_OS_WIN32
@@ -59,7 +59,9 @@
 #define ovr_GetTrackingState ovrHmd_GetTrackingState
 #define ovr_RecenterPose ovrHmd_RecenterPose
 #define ovr_Destroy ovrHmd_Destroy
+#define ovrSuccess ovrTrue
 #endif
+
 
 //-- predeclarations -----
 class App;
@@ -1718,10 +1720,12 @@ bool DK2Context::init()
         success = false;
     }
 
+#if defined(OVR_OS_WIN32)
     if (success)
     {
         m_HMDDesc= ovr_GetHmdDesc(m_HMD);
     }
+#endif
 
     return success;
 }
@@ -1769,10 +1773,17 @@ void DK2Context::getTrackingCameraFrustum(
     frustum.left= ovrVector3ToGlmVec3(cameraMatrix.Col(OVR::Axis_X));
     frustum.up= ovrVector3ToGlmVec3(cameraMatrix.Col(OVR::Axis_Y));
 
+#if defined(OVR_OS_WIN32)
     frustum.HFOV= m_HMDDesc.CameraFrustumHFovInRadians;
     frustum.VFOV= m_HMDDesc.CameraFrustumVFovInRadians;
     frustum.zNear= m_HMDDesc.CameraFrustumNearZInMeters*METERS_TO_CENTIMETERS;
     frustum.zFar= m_HMDDesc.CameraFrustumFarZInMeters*METERS_TO_CENTIMETERS;
+#else
+    frustum.HFOV= m_HMD->CameraFrustumHFovInRadians;
+    frustum.VFOV= m_HMD->CameraFrustumVFovInRadians;
+    frustum.zNear= m_HMD->CameraFrustumNearZInMeters*METERS_TO_CENTIMETERS;
+    frustum.zFar= m_HMD->CameraFrustumFarZInMeters*METERS_TO_CENTIMETERS;
+#endif
 }
 
 OVR::Posef DK2Context::getHMDPose() const
