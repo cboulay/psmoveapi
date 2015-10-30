@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 2.8.12)
 set(ROOT_DIR ${CMAKE_CURRENT_LIST_DIR}/..)
+SET(CMAKE_OSX_DEPLOYMENT_TARGET "10.10")
 include(${ROOT_DIR}/contrib/common.cmake)
 
 # Do all the PSMOVEAPI-only work

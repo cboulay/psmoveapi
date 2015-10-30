@@ -7,28 +7,25 @@ Requirements
   http://www.cmake.org/cmake/resources/software.html
 - Git
   http://code.google.com/p/msysgit/
-- Mercurial
-  https://mercurial.selenic.com/wiki/Download
 
 1. Clone the PS Move API repository
     `git clone --recursive https://github.com/cboulay/psmoveapi.git`
     `cd psmoveapi`
     
-2. Eigen
-    Required - Necessary for orientation algorithms
-    `cd external`
-    `hg clone https://bitbucket.org/eigen/eigen`
-    
 3. Build libusb-1.0
     Optional - Only required if you are building the positional tracker.
     Open psmoveapi\external\libusb-1.0\msvc\libusb_2013.sln
-    Change the target to Release x64 (at the top of the Visual Studio window).
     Right-click on libusb-1.0 (static) and select Properties.
-    In the properties Window, make sure the Platform is set to Active or All Platforms.
+    In the properties Window, make sure the Platform is set to All Platforms.
+    Set the Configurations to Release
     In the properties Window, navigate to Configuration Properties > C/C++ > Code Generation
     Change "Runtime Library" to Multi-threaded DLL (/MD)
+    Click Apply
+    Set the Configurations to Debug
+    Change "Runtime Library" to /MDd
     Click OK
-    Right-click on libusb-1.0 (static) and Build.
+    Right-click on libusb-1.0 (static) and Build for each of the Release and Debug configurations,
+    and for each of the Win32 and x64 Target Platforms.
     
 4. OpenCV
     Optional - Only required if you are building the positional tracker.
@@ -41,7 +38,7 @@ Requirements
 
     Open the solution in psmoveapi\external\opencv\build\OpenCV.sln
     Change the target to Release x64 (at the top of the Visual Studio window).
-    Build the solution (Press F7).
+    Build the solution (Build Menu -> Build Solution).
     You can also build the solution for Debug target if you intend to debug psmoveapi.
     
     Note: OpenCV 2.4.11 is required only for MSVC builds of the psmoveapi; Linux and Mac builds of the psmoveapi require OpenCV 3.
@@ -56,18 +53,22 @@ Requirements
     
     Open the solution (psmoveapi\external\SDL2\build\SDL2.sln)
     Change the target to Release (at the top of the VS window).
-    Build the solution (Press F7).
+    Build the solution (Build Menu -> Build Solution).
 
 6. stb - single file, header only game utility library
     Optional - Only required if you are building the coregistration tool
     `cd external`
     `git clone https://github.com/nothings/stb.git`
-    
-7. Build psmoveapi
+
+7. Oculus SDK - Required if building the coregistration tool.
+    Download OculusSDK from [here](https://developer.oculus.com/downloads/pc/0.8.0.0-beta/Oculus_SDK_for_Windows/)
+    Copy the folder `OculusSDK\LibOVR` from the zip to <psmoveapi>/external/
+
+8. Build psmoveapi
 
     Still in the VS2013 command prompt:
 
-    `cd ..\..\..`
+    Change back to the psmoveapi directory.
     `mkdir build `
     `cd build`
     `cmake .. -G "Visual Studio 12 Win64" -DPSMOVE_USE_PS3EYE_DRIVER=1 -DPSMOVE_HAS_CL_EYE_SDK=1 -DPSMOVE_BUILD_OPENGL_EXAMPLES=ON -DPSMOVE_BUILD_TUIO_SERVER=ON`
@@ -75,12 +76,12 @@ Requirements
 
     Open the `build\Project.sln` solution file.
     Change the target to Release.
-    Build the solution (Press F7).
+    Build the solution.
     You can also build the Debug solution.
     
-8. Read [this Wiki](https://github.com/cboulay/psmove-ue4/wiki) for windows-specific information on pairing and connecting the psmove controller and on using the PS3Eye camera.
+9. Read [this Wiki](https://github.com/cboulay/psmove-ue4/wiki) for windows-specific information on pairing and connecting the psmove controller and on using the PS3Eye camera.
 
-9. Start one of the desired test applications
+10. Start one of the desired test applications
 
     If you previously chose to build the example applications (which is the
     default), you can then run

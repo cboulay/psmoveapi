@@ -88,7 +88,11 @@
 #define PSMOVE_BUFFER_SIZE 49
 
 /* Buffer size for the Bluetooth address get request */
+#ifdef _WIN32
+#define PSMOVE_BTADDR_GET_SIZE 17
+#else
 #define PSMOVE_BTADDR_GET_SIZE 16
+#endif
 
 /* Buffer size for the Bluetooth address set request */
 #define PSMOVE_BTADDR_SET_SIZE 23
@@ -270,10 +274,8 @@ struct _PSMove {
     unsigned char led_write_last_result;
 #endif
 
-#ifdef _WIN32
-    /* Nonzero if this device is a Bluetooth device (on Windows only) */
+    /* Nonzero if this device is a Bluetooth device */
     unsigned char is_bluetooth;
-#endif
 };
 
 // -- macros ------
@@ -509,6 +511,7 @@ psmove_count_connected_hidapi()
          * The one with "&col01#" in the path is the one we will get most of our data from. Only count this one.
          * The one with "&col02#" in the path is the one we will get the bluetooth address from.
          **/
+		psmove_DEBUG("enumerating... hid path: %s\n", cur_dev->path);
         if (strstr(cur_dev->path, "&col01#") == NULL) {
             count--;
         }
@@ -547,6 +550,8 @@ psmove_count_connected()
 PSMove *
 psmove_connect_internal(wchar_t *serial, char *path, int id)
 {
+	psmove_DEBUG("psmove_connect_internal(%ls, %s)\n", serial, path);
+
     char *tmp;
 
     PSMove *move = (PSMove*)calloc(1, sizeof(PSMove));
@@ -554,12 +559,13 @@ psmove_connect_internal(wchar_t *serial, char *path, int id)
 
     /* Make sure the first LEDs update will go through (+ init get_ticks) */
     move->last_leds_update = psmove_util_get_ticks() - PSMOVE_MAX_LED_INHIBIT_MS;
-
-#ifdef _WIN32
-    /* Windows Quirk: USB devices have "0" as serial, BT devices their addr */
-    if (serial != NULL && wcslen(serial) > 1) {
+    
+    if (!((serial == NULL) || (wcslen(serial) == 0)))
+    {
         move->is_bluetooth = 1;
     }
+
+#ifdef _WIN32
     serial = NULL;  // Set the serial to NULL, even if BT device, to use psmove_get_serial below.
 
     /**
@@ -581,10 +587,12 @@ psmove_connect_internal(wchar_t *serial, char *path, int id)
     p[5] = '2';
     psmove_return_val_if_fail((p = strstr(move->device_path_addr, "&0000#")) != NULL, NULL);
     p[4] = '1';
+	psmove_DEBUG("move->handle_addr = hid_open_path(%s)\n", move->device_path_addr);
     move->handle_addr = hid_open_path(move->device_path_addr);
     hid_set_nonblocking(move->handle_addr, 1);
 
     move->device_path = strdup(path);
+	psmove_DEBUG("move->handle = hid_open_path(%s)\n", move->device_path);
     move->handle = hid_open_path(move->device_path);
 
 #else
@@ -592,15 +600,19 @@ psmove_connect_internal(wchar_t *serial, char *path, int id)
     if (path != NULL) {
         move->device_path = strdup(path);
     }
-    if (serial == NULL && path != NULL) {
+    if (path != NULL)
+    {
+        psmove_DEBUG("move->handle = hid_open_path(%s)\n", path);
         move->handle = hid_open_path(path);
-    } else {
+    } else if ((serial != NULL) && (*serial != '\0'))
+    {
         move->handle = hid_open(PSMOVE_VID, PSMOVE_PID, serial);
     }
 
 #endif
 
     if (!move->handle) {
+        psmove_DEBUG("move->handle is NULL");
         free(move);
         return NULL;
     }
@@ -616,11 +628,13 @@ psmove_connect_internal(wchar_t *serial, char *path, int id)
 
     /* Remember the serial number */
     move->serial_number = (char*)calloc(PSMOVE_MAX_SERIAL_LENGTH, sizeof(char));
-    if (serial != NULL) {
+    move->serial_number[0] = 0;
+    if ((serial != NULL) && (*serial != '\0')) {
         wcstombs(move->serial_number, serial, PSMOVE_MAX_SERIAL_LENGTH);
     } else {
         move->serial_number = psmove_get_serial(move);
     }
+    psmove_DEBUG("move->serial_number : %s\n", move->serial_number);
 
     // Recently disconnected controllers might still show up in hidapi (especially Windows).
     if (!move->serial_number) {
@@ -867,6 +881,7 @@ psmove_connect_by_id(int id)
     cur_dev = devs;
     while (cur_dev) {
 #ifdef _WIN32
+		psmove_DEBUG("hid path: %s\n", cur_dev->path);
         if (strstr(cur_dev->path, "&col01#") != NULL) {
 #endif
             if (count == id) {
@@ -949,6 +964,10 @@ _psmove_get_calibration_blob(PSMove *move, char **dest, size_t *size)
     unsigned char calibration[PSMOVE_CALIBRATION_BLOB_SIZE];
 
     unsigned char cal[PSMOVE_CALIBRATION_SIZE];
+	int tocopy = sizeof(cal);
+#ifdef _WIN32
+	tocopy -= sizeof(unsigned char);
+#endif
     int res;
     int x;
 
@@ -965,7 +984,8 @@ _psmove_get_calibration_blob(PSMove *move, char **dest, size_t *size)
                 "https://github.com/thp/psmoveapi/issues/108");
         }
 #endif
-        psmove_return_val_if_fail(res == PSMOVE_CALIBRATION_SIZE, 0);
+
+		psmove_return_val_if_fail(res == PSMOVE_CALIBRATION_SIZE, 0);
 
         if (cal[1] == 0x00) {
             /* First block */
@@ -973,18 +993,18 @@ _psmove_get_calibration_blob(PSMove *move, char **dest, size_t *size)
             src_offset = 0;
         } else if (cal[1] == 0x01) {
             /* Second block */
-            dest_offset = PSMOVE_CALIBRATION_SIZE;
+			dest_offset = tocopy;
             src_offset = 2;
         } else if (cal[1] == 0x82) {
             /* Third block */
-            dest_offset = 2*PSMOVE_CALIBRATION_SIZE - 2;
+			dest_offset = (2 * tocopy) - 2;
             src_offset = 2;
         } else {
             return 0;
         }
 
         memcpy(calibration+dest_offset, cal+src_offset,
-                sizeof(cal)-src_offset);
+			tocopy - src_offset);
     }
 
     *dest = (char*)malloc(sizeof(calibration));
@@ -999,8 +1019,7 @@ psmove_get_serial(PSMove *move)
 {
     psmove_return_val_if_fail(move != NULL, NULL);
     psmove_return_val_if_fail(move->serial_number != NULL, NULL);
-
-    if (strlen(move->serial_number) == 0) {
+    if ((move->serial_number == NULL) || (strlen(move->serial_number) == 0)) {
         PSMove_Data_BTAddr btaddr;
         if (!_psmove_read_btaddrs(move, NULL, &btaddr)) {
             return NULL;
@@ -1188,23 +1207,11 @@ psmove_connection_type(PSMove *move)
         return Conn_Bluetooth;
     }
 
-#if defined(_WIN32)
     if (move->is_bluetooth) {
         return Conn_Bluetooth;
     } else {
         return Conn_USB;
     }
-#else
-    if (move->serial_number == NULL) {
-        return Conn_Unknown;
-    }
-
-    if (strlen(move->serial_number) == 0) {
-        return Conn_USB;
-    }
-
-    return Conn_Bluetooth;
-#endif
 }
 
 int
