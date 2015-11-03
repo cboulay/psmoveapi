@@ -207,10 +207,15 @@ camera_control_new_with_settings(
             {
                 int cams = CLEyeGetCameraCount();
 
-                if (cams <= cameraID) {
-                        CLEyeDestroyServer();
-                        free(cc);
-                        return NULL;
+                if (cams <= cameraID) 
+                {
+                    CLEyeDestroyServer();
+
+                    g_last_tracker_error_code= PSMove_Camera_API_Initialize_Failure;
+                    psmove_WARNING("Failed to open cl eye server (No Cameras)");
+
+                    free(cc);
+                    return NULL;
                 }
 
                 GUID cguid = CLEyeGetCameraUUID(cameraID);
@@ -229,6 +234,8 @@ camera_control_new_with_settings(
             {
                 g_last_tracker_error_code= PSMove_Camera_API_Initialize_Failure;
                 psmove_WARNING("Failed to open cl eye server");
+                free(cc);
+                return NULL;
             }
             #endif // CAMERA_CONTROL_HAS_CL_DRIVER
         } break;
