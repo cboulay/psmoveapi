@@ -1424,9 +1424,12 @@ bool PSMoveContext::initTracker()
         psmove_tracker_settings_set_default(&settings);
         settings.color_mapping_max_age = 0;
         settings.exposure_mode = Exposure_MANUAL;
+        settings.camera_exposure=  (15 * 0xFFFF) / 255; // [0,255] -> [0, 0xffff]
         settings.camera_mirror = PSMove_True;
         settings.camera_type= PSMove_Focal_Length_PS3EYE_BLUEDOT; // Wider FOV
         settings.camera_api= m_camera_api;
+        settings.color_save_colormapping = PSMove_False;
+        settings.color_list_start_ind = 0; // Start with magenta if available.
         settings.use_fitEllipse = 1;
 
         m_tracker = psmove_tracker_new_with_settings(&settings);
