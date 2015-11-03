@@ -88,17 +88,16 @@
 #define PSMOVE_BUFFER_SIZE 49
 
 /* Buffer size for the Bluetooth address get request */
-#ifdef _WIN32
-#define PSMOVE_BTADDR_GET_SIZE 17
-#else
 #define PSMOVE_BTADDR_GET_SIZE 16
-#endif
 
 /* Buffer size for the Bluetooth address set request */
 #define PSMOVE_BTADDR_SET_SIZE 23
 
 /* Buffer size for sending/retrieving a request to an extension device */
 #define PSMOVE_EXT_DEVICE_REPORT_SIZE 49
+
+/* Buffer size for the Firmware get request */
+#define FIRMWARE_GET_SIZE 14
 
 /* Maximum length of the serial string */
 #define PSMOVE_MAX_SERIAL_LENGTH 255
@@ -738,7 +737,7 @@ _psmove_get_auth_response(PSMove *move)
 PSMove_Firmware_Info *
 _psmove_get_firmware_info(PSMove *move)
 {
-    unsigned char buf[14];
+	unsigned char buf[FIRMWARE_GET_SIZE];
     int res;
     int expected_res = sizeof(buf) - 1;
     unsigned char *p = buf;
@@ -965,9 +964,6 @@ _psmove_get_calibration_blob(PSMove *move, char **dest, size_t *size)
 
     unsigned char cal[PSMOVE_CALIBRATION_SIZE];
 	int tocopy = sizeof(cal);
-#ifdef _WIN32
-	tocopy -= sizeof(unsigned char);
-#endif
     int res;
     int x;
 

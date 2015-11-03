@@ -103,17 +103,10 @@ struct PSMove_RGBValue {
 };
 
 
-#ifdef _WIN32
-/* Buffer size for calibration data */
-#define PSMOVE_CALIBRATION_SIZE 50
-/* Three blocks, minus 2x the header (2 bytes) for the 2nd and 3rd block */
-#define PSMOVE_CALIBRATION_BLOB_SIZE (49*3 - 2*2)
-#else
 /* Buffer size for calibration data */
 #define PSMOVE_CALIBRATION_SIZE 49
 /* Three blocks, minus 2x the header (2 bytes) for the 2nd and 3rd block */
 #define PSMOVE_CALIBRATION_BLOB_SIZE (PSMOVE_CALIBRATION_SIZE*3 - 2*2)
-#endif
 
 
 /* System-wide data directory */
