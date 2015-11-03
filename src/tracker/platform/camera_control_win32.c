@@ -38,7 +38,7 @@
 #include "../camera_control_private.h"
 
 void camera_control_backup_system_settings(CameraControl* cc, const char* file) {
-#if !defined(CAMERA_CONTROL_USE_CL_DRIVER) && defined(PSMOVE_USE_PSEYE)
+#if defined(PSMOVE_USE_PSEYE) && !defined(CAMERA_CONTROL_USE_CL_DRIVER) && !defined(CAMERA_CONTROL_USE_PS3EYE_DRIVER)
     HKEY hKey;
     DWORD l = sizeof(DWORD);
     DWORD AutoAEC = 0;
@@ -82,7 +82,7 @@ void camera_control_backup_system_settings(CameraControl* cc, const char* file) 
 }
 
 void camera_control_restore_system_settings(CameraControl* cc, const char* file) {
-#if !defined(CAMERA_CONTROL_USE_CL_DRIVER) && defined(PSMOVE_USE_PSEYE)
+#if defined(PSMOVE_USE_PSEYE) && !defined(CAMERA_CONTROL_USE_CL_DRIVER) && !defined(CAMERA_CONTROL_USE_PS3EYE_DRIVER)
     int NOT_FOUND = -1;
     int val;
     HKEY hKey;
@@ -136,7 +136,41 @@ void camera_control_restore_system_settings(CameraControl* cc, const char* file)
 
 void camera_control_set_parameters(CameraControl* cc, int autoE, int autoG, int autoWB, int exposure, int gain, int wbRed, int wbGreen, int wbBlue, int contrast,
         int brightness) {
-#if defined(CAMERA_CONTROL_USE_CL_DRIVER)
+#if defined(PSMOVE_USE_PSEYE) && !defined(CAMERA_CONTROL_USE_CL_DRIVER) && !defined(CAMERA_CONTROL_USE_PS3EYE_DRIVER)
+	int val;
+	HKEY hKey;
+	DWORD l = sizeof(DWORD);
+	char* PATH = CL_DRIVER_REG_PATH;
+	int err = RegOpenKeyExA(HKEY_CURRENT_USER, PATH, 0, KEY_ALL_ACCESS, &hKey);
+	if (err != ERROR_SUCCESS) {
+		printf("Error: %d Unable to open reg-key:  [HKCU]\\%s!\n", err, PATH);
+		printf("psmoveapi_tracker is configured to use CL Eye driver (non-SDK). ");
+		printf("Either the driver needs to be installed or psmoveapi_tracker should be configured to use PS3EYEDriver.\n");
+		return;
+	}
+	val = autoE > 0;
+	RegSetValueExA(hKey, "AutoAEC", 0, REG_DWORD, (CONST BYTE*)&val, l);
+	val = autoG > 0;
+	RegSetValueExA(hKey, "AutoAGC", 0, REG_DWORD, (CONST BYTE*)&val, l);
+	val = autoWB > 0;
+	RegSetValueExA(hKey, "AutoAWB", 0, REG_DWORD, (CONST BYTE*)&val, l);
+	val = (int)round((511 * exposure) / 0xFFFF);
+	RegSetValueExA(hKey, "Exposure", 0, REG_DWORD, (CONST BYTE*)&val, l);
+	val = (int)round((79 * gain) / 0xFFFF);
+	RegSetValueExA(hKey, "Gain", 0, REG_DWORD, (CONST BYTE*)&val, l);
+	val = (int)round((255 * wbRed) / 0xFFFF);
+	RegSetValueExA(hKey, "WhiteBalanceR", 0, REG_DWORD, (CONST BYTE*)&val, l);
+	val = (int)round((255 * wbGreen) / 0xFFFF);
+	RegSetValueExA(hKey, "WhiteBalanceG", 0, REG_DWORD, (CONST BYTE*)&val, l);
+	val = (int)round((255 * wbBlue) / 0xFFFF);
+	RegSetValueExA(hKey, "WhiteBalanceB", 0, REG_DWORD, (CONST BYTE*)&val, l);
+
+	// restart the camera capture with openCv
+	if (cc->capture) {
+		cvReleaseCapture(&cc->capture);
+	}
+
+#elif defined(CAMERA_CONTROL_USE_CL_DRIVER)
     if (autoE >= 0)
         CLEyeSetCameraParameter(cc->camera, CLEYE_AUTO_EXPOSURE, autoE > 0);
     if (autoG >= 0)
@@ -153,42 +187,8 @@ void camera_control_set_parameters(CameraControl* cc, int autoE, int autoG, int 
         CLEyeSetCameraParameter(cc->camera, CLEYE_WHITEBALANCE_GREEN, (int)round((255 * wbGreen) / 0xFFFF));
     if (wbBlue >= 0)
         CLEyeSetCameraParameter(cc->camera, CLEYE_WHITEBALANCE_BLUE, (int)round((255 * wbBlue) / 0xFFFF));
-#elif defined(PSMOVE_USE_PSEYE)
-    int val;
-    HKEY hKey;
-    DWORD l = sizeof(DWORD);
-    char* PATH = CL_DRIVER_REG_PATH;
-    int err = RegOpenKeyExA(HKEY_CURRENT_USER, PATH, 0, KEY_ALL_ACCESS, &hKey);
-    if (err != ERROR_SUCCESS) {
-        printf("Error: %d Unable to open reg-key:  [HKCU]\\%s!\n", err, PATH);
-        printf("psmoveapi_tracker is configured to use CL Eye driver (non-SDK). ");
-        printf("Either the driver needs to be installed or psmoveapi_tracker should be configured to use PS3EYEDriver.\n");
-        return;
-    }
-    val = autoE > 0;
-    RegSetValueExA(hKey, "AutoAEC", 0, REG_DWORD, (CONST BYTE*)&val, l);
-    val = autoG > 0;
-    RegSetValueExA(hKey, "AutoAGC", 0, REG_DWORD, (CONST BYTE*)&val, l);
-    val = autoWB > 0;
-    RegSetValueExA(hKey, "AutoAWB", 0, REG_DWORD, (CONST BYTE*)&val, l);
-    val = (int)round((511 * exposure) / 0xFFFF);
-    RegSetValueExA(hKey, "Exposure", 0, REG_DWORD, (CONST BYTE*)&val, l);
-    val = (int)round((79 * gain) / 0xFFFF);
-    RegSetValueExA(hKey, "Gain", 0, REG_DWORD, (CONST BYTE*)&val, l);
-    val = (int)round((255 * wbRed) / 0xFFFF);
-    RegSetValueExA(hKey, "WhiteBalanceR", 0, REG_DWORD, (CONST BYTE*)&val, l);
-    val = (int)round((255 * wbGreen) / 0xFFFF);
-    RegSetValueExA(hKey, "WhiteBalanceG", 0, REG_DWORD, (CONST BYTE*)&val, l);
-    val = (int)round((255 * wbBlue) / 0xFFFF);
-    RegSetValueExA(hKey, "WhiteBalanceB", 0, REG_DWORD, (CONST BYTE*)&val, l);
-
-    // restart the camera capture with openCv
-    if (cc->capture) {
-            cvReleaseCapture(&cc->capture);
-        }
-#endif //PSMOVE_USE_PSEYE
-
-#ifdef CAMERA_CONTROL_USE_PS3EYE_DRIVER
+   
+#elif defined(CAMERA_CONTROL_USE_PS3EYE_DRIVER)
     //autoE... setAutoExposure not defined in ps3eye.h
     ps3eye_set_parameter(cc->eye, PS3EYE_AUTO_GAIN, autoG > 0);  
     ps3eye_set_parameter(cc->eye, PS3EYE_AUTO_WHITEBALANCE, autoWB > 0);
