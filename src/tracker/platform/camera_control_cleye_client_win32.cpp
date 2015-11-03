@@ -92,8 +92,8 @@ CLEyeInitializeServer(const char *path_to_cleye_server_exe)
 
     if (!success)
     {
-        destroy_shared_memory_state(&g_client_state);
         destroy_server_process(&g_client_state);
+        destroy_shared_memory_state(&g_client_state);
     }
 
     return success;
@@ -415,8 +415,11 @@ void destroy_server_process(CLEyeClientState *client_state)
     if (client_state->serverProcessInformation.hProcess != INVALID_HANDLE_VALUE && 
         client_state->serverProcessInformation.hProcess != NULL)
     {
-        client_state->pMapBuffer->RequestType= _serverRequestType_stopServer;
-        post_and_wait_for_server_response(client_state);
+        if (client_state->pMapBuffer != NULL)
+        {
+            client_state->pMapBuffer->RequestType= _serverRequestType_stopServer;
+            post_and_wait_for_server_response(client_state);
+        }
         
         if (WaitForSingleObject(client_state->serverProcessInformation.hProcess, SERVER_STOP_WAIT_TIMEOUT) != WAIT_OBJECT_0)
         {
