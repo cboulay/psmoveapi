@@ -88,11 +88,7 @@
 #define PSMOVE_BUFFER_SIZE 49
 
 /* Buffer size for the Bluetooth address get request */
-#ifdef _WIN32
-#define PSMOVE_BTADDR_GET_SIZE 17
-#else
 #define PSMOVE_BTADDR_GET_SIZE 16
-#endif
 
 /* Buffer size for the Bluetooth address set request */
 #define PSMOVE_BTADDR_SET_SIZE 23
@@ -934,7 +930,8 @@ _psmove_read_btaddrs(PSMove *move, PSMove_Data_BTAddr *host, PSMove_Data_BTAddr 
         res = hid_get_feature_report(move->handle, btg, sizeof(btg));
     }
 
-    if (res == sizeof(btg)) {
+    // FILTHY HACK: In windows sometimes this is 1 byte extra padding
+    if (res == PSMOVE_BTADDR_GET_SIZE) {
         if (controller != NULL) {
             memcpy(*controller, btg+1, 6);
         }
@@ -965,9 +962,6 @@ _psmove_get_calibration_blob(PSMove *move, char **dest, size_t *size)
 
     unsigned char cal[PSMOVE_CALIBRATION_SIZE];
 	int tocopy = sizeof(cal);
-#ifdef _WIN32
-	tocopy -= sizeof(unsigned char);
-#endif
     int res;
     int x;
 
