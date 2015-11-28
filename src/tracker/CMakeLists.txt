@@ -39,6 +39,10 @@ ENDIF()
 IF(PSMOVE_BUILD_TRACKER)
     FIND_PACKAGE(OpenCV QUIET)
     IF(OpenCV_FOUND)
+        IF ("${OpenCV_LIBS}" STREQUAL "")
+            message("OpenCV Libs was empty! Manually setting.")
+            list(APPEND OpenCV_LIBS opencv_core opencv_imgproc opencv_calib3d opencv_features2d opencv_highgui)
+        ENDIF()    
         list(APPEND PSMOVEAPI_TRACKER_REQUIRED_LIBS ${OpenCV_LIBS})
         include_directories(${OpenCV_INCLUDE_DIR})
         set(INFO_BUILD_TRACKER "Yes")
@@ -108,11 +112,13 @@ ENDIF()
 IF(PSMOVE_HAS_PS3EYE_DRIVER)
     # PS3EYEDriver is based on GPL'd code
     set(INFO_LICENSE "GPL")
+    set(PSMOVE_USE_PSEYE ON)
 ENDIF()
 
 #CL_EYE_DRIVER
 set(INFO_HAS_CL_EYE "No (Windows only)")
 IF(PSMOVE_HAS_CL_EYE_SDK AND ${CMAKE_SYSTEM_NAME} MATCHES "Windows")
+    include_directories(${ROOT_DIR}/external/CLEye)
     find_path(CL_EYE_SDK_PATH Bin/CLEyeMulticam.dll
         HINTS "C:/Program Files/Code Laboratories/CL-Eye Platform SDK"
         "C:/Program Files (x86)/Code Laboratories/CL-Eye Platform SDK")
@@ -125,10 +131,12 @@ IF(PSMOVE_HAS_CL_EYE_SDK AND ${CMAKE_SYSTEM_NAME} MATCHES "Windows")
         file(COPY ${CL_EYE_SDK_PATH}/Bin/CLEyeMulticam.dll
             DESTINATION ${ROOT_DIR}/external/libs)
         set(INFO_HAS_CL_EYE "Yes (SDK version)")
+        set(PSMOVE_USE_PSEYE ON)
         # XXX: If this crashes, disable compiler optimizations
     ELSE()  # Fall back to registry version
         add_definitions(-DCAMERA_CONTROL_HAS_CL_DRIVER)
         set(INFO_HAS_CL_EYE "Yes (registry version)")
+        set(PSMOVE_USE_PSEYE ON)
     ENDIF()
 ENDIF()
 
@@ -167,16 +175,7 @@ if(PSMOVE_BUILD_TRACKER)
         ${PSMOVEAPI_REQUIRED_LIBS}
         ${PSMOVEAPI_TRACKER_REQUIRED_LIBS})
     set_target_properties(psmoveapi_tracker_static PROPERTIES
-        COMPILE_FLAGS -DBUILDING_STATIC_LIBRARY)
-    
-    # Always build the cl eye server as a 32-bit application 
-    # But only bother building it if this is a 64-bit system
-    IF(PSMOVE_HAS_CL_EYE_SDK AND ${CMAKE_C_SIZEOF_DATA_PTR} EQUAL 8)
-        add_executable(psmove_cleye_server ${CMAKE_CURRENT_LIST_DIR}/platform/camera_control_cleye_server_win32.cpp)
-        set_target_properties(psmove_cleye_server PROPERTIES PLATFORM "win32")
-        target_link_libraries(psmove_cleye_server CLEyeMulticam)       
-        list(APPEND PSMOVEAPI_INSTALL_TARGETS psmove_cleye_server)        
-    endif()
+        COMPILE_FLAGS -DBUILDING_STATIC_LIBRARY)    
 endif()
 
 message("")

@@ -34,7 +34,7 @@
 #include <windows.h>
 #include <memory.h>
 
-#include "../external/CLEye/CLEyeMulticam.h"
+#include "CLEyeMulticam.h"
 #include "camera_control_cleye_server_win32.h"
 
 //-- constants -----
