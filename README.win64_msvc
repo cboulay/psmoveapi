@@ -64,21 +64,6 @@ Requirements
     Download OculusSDK from [here](https://developer.oculus.com/downloads/pc/0.8.0.0-beta/Oculus_SDK_for_Windows/)
     Copy the folder `OculusSDK\LibOVR` from the zip to <psmoveapi>/external/
 
-8. 32-bit CLEye Server
-    Optional - Only required if you want to run psmoveapi in a 64-bit application
-    and use the CLEye camera driver. Since the CLEye Driver is a 32-bit dll we have 
-    to host the dll in a 32-bit exe and then read video frames via shared memory 
-    interprocess communication between the 32-bit server and the 64-bit parent application.
-    `cd CLEye`
-    `mkdir build`
-    `cd build`
-    `cmake .. -G "Visual Studio 12"`
-    
-    Open the solution in psmoveapi\external\CLEye\build\PSMove_CLEye_Server.sln
-    Change the target to Release Win32 (at the top of the Visual Studio window).
-    Build the solution (Build Menu -> Build Solution).
-    You can also build the solution for Debug target if you intend to debug the CLEye server.    
-    
 8. Build psmoveapi
 
     Still in the VS2013 command prompt:
@@ -86,8 +71,8 @@ Requirements
     Change back to the psmoveapi directory.
     `mkdir build `
     `cd build`
-    `cmake .. -G "Visual Studio 12 Win64" -DPSMOVE_HAS_PS3EYE_DRIVER=1 -DPSMOVE_HAS_CL_EYE_SDK=1 -DPSMOVE_BUILD_OPENGL_EXAMPLES=ON -DPSMOVE_BUILD_TUIO_SERVER=ON`
-    #`cmake .. -G "Visual Studio 12 Win64" -DPSMOVE_HAS_PS3EYE_DRIVER=1 -DPSMOVE_HAS_CL_EYE_SDK=1 -DPSMOVE_BUILD_OPENGL_EXAMPLES=ON -DPSMOVE_BUILD_TUIO_SERVER=ON -DPSMOVE_USE_TRACKER_TRACE=ON -DPSMOVE_USE_DEBUG=ON`
+    `cmake .. -G "Visual Studio 12 Win64" -DPSMOVE_USE_PS3EYE_DRIVER=1 -DPSMOVE_BUILD_OPENGL_EXAMPLES=ON -DPSMOVE_BUILD_TUIO_SERVER=ON`
+    #`cmake .. -G "Visual Studio 12 Win64" -DPSMOVE_USE_PS3EYE_DRIVER=1 -DPSMOVE_BUILD_OPENGL_EXAMPLES=ON -DPSMOVE_BUILD_TUIO_SERVER=ON -DPSMOVE_USE_TRACKER_TRACE=ON -DPSMOVE_USE_DEBUG=ON`
 
     Open the `build\Project.sln` solution file.
     Change the target to Release.

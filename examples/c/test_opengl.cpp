@@ -65,7 +65,7 @@ class Point3D {
 
 class Tracker {
     public:
-        Tracker(PSMoveTracker_Camera_API cameraAPI);
+        Tracker();
         ~Tracker();
         void update();
 
@@ -88,7 +88,7 @@ class Tracker {
         GLuint m_texture;
 };
 
-Tracker::Tracker(PSMoveTracker_Camera_API cameraAPI)
+Tracker::Tracker()
     : m_moves(NULL),
       m_count(0),
       m_tracker(NULL),
@@ -105,12 +105,11 @@ Tracker::Tracker(PSMoveTracker_Camera_API cameraAPI)
     PSMoveTrackerSettings settings;
     psmove_tracker_settings_set_default(&settings);
     settings.color_mapping_max_age = 0;
-    settings.exposure_mode = Exposure_MANUAL;
+    settings.exposure_mode = Exposure_LOW;
     settings.camera_mirror = PSMove_True;
     settings.use_fitEllipse = 1;
     settings.color_save_colormapping = PSMove_False;
     settings.color_list_start_ind = 0;  // Start with magenta if available.
-    settings.camera_api= cameraAPI;
     m_tracker = psmove_tracker_new_with_settings(&settings);
     if (m_tracker == NULL) {
         fprintf(stderr, "No tracker available! (Missing camera?)\n");
@@ -423,25 +422,7 @@ Main::exec()
 
 extern "C" int main(int argc, char *argv[])
 {
-    PSMoveTracker_Camera_API cameraAPI= PSMove_Camera_API_PS3EYE_LIBUSB;
-
-    if (argc > 1)
-    {
-        if (strcmp(argv[1], "libusb") == 0)
-        {
-            cameraAPI= PSMove_Camera_API_PS3EYE_LIBUSB;
-        }
-        else if (strcmp(argv[1], "cleye") == 0)
-        {
-            cameraAPI= PSMove_Camera_API_PS3EYE_CLEYE;
-        }
-        else if (strcmp(argv[1], "opencv") == 0)
-        {
-            cameraAPI= PSMove_Camera_API_OPENCV;
-        }
-    }
-
-    Tracker tracker(cameraAPI);
+    Tracker tracker;
     Renderer renderer(tracker);
     Main main(tracker, renderer);
 

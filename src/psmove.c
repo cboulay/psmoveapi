@@ -96,6 +96,9 @@
 /* Buffer size for sending/retrieving a request to an extension device */
 #define PSMOVE_EXT_DEVICE_REPORT_SIZE 49
 
+/* Buffer size for the Firmware get request */
+#define FIRMWARE_GET_SIZE 14
+
 /* Maximum length of the serial string */
 #define PSMOVE_MAX_SERIAL_LENGTH 255
 
@@ -734,7 +737,7 @@ _psmove_get_auth_response(PSMove *move)
 PSMove_Firmware_Info *
 _psmove_get_firmware_info(PSMove *move)
 {
-    unsigned char buf[14];
+	unsigned char buf[FIRMWARE_GET_SIZE];
     int res;
     int expected_res = sizeof(buf) - 1;
     unsigned char *p = buf;
@@ -930,8 +933,7 @@ _psmove_read_btaddrs(PSMove *move, PSMove_Data_BTAddr *host, PSMove_Data_BTAddr 
         res = hid_get_feature_report(move->handle, btg, sizeof(btg));
     }
 
-    // FILTHY HACK: In windows sometimes this is 1 byte extra padding
-    if (res == PSMOVE_BTADDR_GET_SIZE) {
+    if (res == sizeof(btg)) {
         if (controller != NULL) {
             memcpy(*controller, btg+1, 6);
         }

@@ -65,7 +65,7 @@ void put_text(IplImage* img, const char* text) {
     cvPutText(img, text, TEXT_POS, &font, TEXT_COLOR);
 }
 
-int main(int argc, char** argv) {
+int main(int arg, char** args) {
     
     if (!psmove_init(PSMOVE_CURRENT_VERSION)) {
         fprintf(stderr, "PS Move API init failed (wrong version?)\n");
@@ -87,28 +87,7 @@ int main(int argc, char** argv) {
     CvMat* distortion_coeffs = cvCreateMat(5, 1, CV_32FC1);
     IplImage *image;
     
-
-    PSMoveTrackerSettings settings;
-    psmove_tracker_settings_set_default(&settings);
-    settings.camera_api= PSMove_Camera_API_PS3EYE_LIBUSB;
-
-    if (argc >= 2)
-    {
-        if (strcmp(argv[1], "libusb") == 0)
-        {
-            settings.camera_api= PSMove_Camera_API_PS3EYE_LIBUSB;
-        }
-        else if (strcmp(argv[1], "cleye") == 0)
-        {
-            settings.camera_api= PSMove_Camera_API_PS3EYE_CLEYE;
-        }
-        else if (strcmp(argv[1], "opencv") == 0)
-        {
-            settings.camera_api= PSMove_Camera_API_OPENCV;
-        }
-    }
-
-    PSMoveTracker* tracker = psmove_tracker_new_with_settings(&settings);
+    PSMoveTracker* tracker = psmove_tracker_new();
     psmove_tracker_reset_distortion(tracker);
     psmove_tracker_set_exposure(tracker, Exposure_HIGH);
 
