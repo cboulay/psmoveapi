@@ -78,10 +78,32 @@ const PSMove_3AxisTransform g_psmove_sensor_transform_opengl = {1,0,0, 0,0,1, 0,
 const PSMove_3AxisTransform *k_psmove_sensor_transform_opengl= &g_psmove_sensor_transform_opengl;
 
 //-- structures ----
+struct _PSMoveQuaternion
+{
+    float x, y, z, w;
+
+    Eigen::Quaternionf ToEigenQuaternion()
+    {
+        return Eigen::Quaternionf(w, x, y, z);
+    }
+
+    void FromEigenQuaternion(const Eigen::Quaternionf &q)
+    {
+        x= q.x();
+        y= q.y();
+        z= q.z();
+        w= q.w();
+    }
+};
+typedef struct _PSMoveQuaternion PSMoveQuaternion;
+
+const PSMoveQuaternion g_psmove_zero_quaternion = {0.f,0.f,0.f,0.f};
+const PSMoveQuaternion g_psmove_identity_quaternion = {0.f,0.f,0.f,1.f};
+
 struct _PSMoveMadwickMARGState
 {
 	// estimate gyroscope biases error
-	Eigen::Quaternionf omega_bias; 
+	PSMoveQuaternion omega_bias; 
 };
 typedef struct _PSMoveMadwickMARGState PSMoveMadgwickMARGState;
 
@@ -102,10 +124,10 @@ struct _PSMoveOrientation {
     long sample_freq_measure_count;
 
     /* Output value as quaternion */
-	Eigen::Quaternionf quaternion;
+	PSMoveQuaternion quaternion;
 
     /* Quaternion measured when controller points towards camera */
-	Eigen::Quaternionf reset_quaternion;
+	PSMoveQuaternion reset_quaternion;
 
 	/* Transforms the gravity and magnetometer calibration vectors recorded when the 
 	   controller was help upright during calibration. This is needed if you want the "identity pose" 
@@ -166,8 +188,8 @@ psmove_orientation_new(PSMove *move)
     orientation_state->sample_freq_measure_count = 0;
 
     /* Initial quaternion */
-	orientation_state->quaternion.setIdentity();
-	orientation_state->reset_quaternion.setIdentity();
+	orientation_state->quaternion= g_psmove_identity_quaternion;
+	orientation_state->reset_quaternion= g_psmove_identity_quaternion;
 
 	/* Initialize data specific to the selected filter */
 	psmove_orientation_set_fusion_type(orientation_state, OrientationFusion_ComplementaryMARG);
@@ -196,7 +218,7 @@ psmove_orientation_set_fusion_type(PSMoveOrientation *orientation_state, enum PS
 		{
 			PSMoveMadgwickMARGState *marg_state = &orientation_state->fusion_state.madgwick_marg_state;
 
-			marg_state->omega_bias = Eigen::Quaternionf(0.f, 0.f, 0.f, 0.f);
+			marg_state->omega_bias = g_psmove_zero_quaternion;
 		}
 		break;
 	case OrientationFusion_ComplementaryMARG:
@@ -349,7 +371,7 @@ psmove_orientation_update(PSMoveOrientation *orientation_state)
     /* We get 2 measurements per call to psmove_poll() */
     orientation_state->sample_freq_measure_count += 2;
 
-	Eigen::Quaternionf quaternion_backup = orientation_state->quaternion;
+	PSMoveQuaternion quaternion_backup = orientation_state->quaternion;
 	float deltaT = 1.f / fmax(orientation_state->sample_freq, SAMPLE_FREQUENCY); // time delta = 1/frequency
 
     for (frame_half=0; frame_half<2; frame_half++) 
@@ -413,7 +435,7 @@ psmove_orientation_update(PSMoveOrientation *orientation_state)
 			break;
 		}
 
-		if (!psmove_quaternion_is_valid(orientation_state->quaternion)) 
+		if (!psmove_quaternion_is_valid(orientation_state->quaternion.ToEigenQuaternion())) 
 		{
             psmove_DEBUG("Orientation is NaN!");
 			orientation_state->quaternion = quaternion_backup;
@@ -427,7 +449,9 @@ psmove_orientation_get_quaternion(PSMoveOrientation *orientation_state,
 {
     psmove_return_if_fail(orientation_state != NULL);
 
-	Eigen::Quaternionf result= orientation_state->reset_quaternion * orientation_state->quaternion;
+    Eigen::Quaternionf reset_quaternion = orientation_state->reset_quaternion.ToEigenQuaternion();
+    Eigen::Quaternionf current_quaternion = orientation_state->quaternion.ToEigenQuaternion();
+	Eigen::Quaternionf result= reset_quaternion * current_quaternion;
 
     if (q0) {
 		*q0 = result.w();
@@ -451,10 +475,10 @@ psmove_orientation_reset_quaternion(PSMoveOrientation *orientation_state)
 {
     psmove_return_if_fail(orientation_state != NULL);
 
-	Eigen::Quaternionf q_inverse = orientation_state->quaternion.conjugate();
+	Eigen::Quaternionf q_inverse = orientation_state->quaternion.ToEigenQuaternion().conjugate();
 
 	psmove_quaternion_normalize_with_default(q_inverse, Eigen::Quaternionf::Identity());
-	orientation_state->reset_quaternion = q_inverse;
+	orientation_state->reset_quaternion.FromEigenQuaternion(q_inverse);
 }
 
 void
@@ -477,7 +501,7 @@ static void _psmove_orientation_fusion_imu_update(
 	const Eigen::Vector3f &current_g)
 {
 	// Current orientation from earth frame to sensor frame
-	Eigen::Quaternionf SEq = orientation_state->quaternion;
+	Eigen::Quaternionf SEq = orientation_state->quaternion.ToEigenQuaternion();
 	Eigen::Quaternionf SEq_new = SEq;
 
 	// Compute the quaternion derivative measured by gyroscopes
@@ -527,7 +551,7 @@ static void _psmove_orientation_fusion_imu_update(
 	SEq_new.normalize();
 
 	// Save the new quaternion back into the orientation state
-	orientation_state->quaternion = SEq_new;
+	orientation_state->quaternion.FromEigenQuaternion(SEq_new);
 }
 
 // This algorithm comes from Sebastian O.H. Madgwick's 2010 paper:
@@ -555,7 +579,7 @@ _psmove_orientation_fusion_madgwick_marg_update(
 	PSMoveMadgwickMARGState *marg_state = &orientation_state->fusion_state.madgwick_marg_state;
 
 	// Current orientation from earth frame to sensor frame
-	Eigen::Quaternionf SEq = orientation_state->quaternion;
+	Eigen::Quaternionf SEq = orientation_state->quaternion.ToEigenQuaternion();
 
 	// Get the direction of the magnetic fields in the identity pose.	
 	// NOTE: In the original paper we converge on this vector over time automatically (See Eqn 45 & 46)
@@ -608,12 +632,14 @@ _psmove_orientation_fusion_madgwick_marg_update(
 
 	// Eqn 48) net_omega_bias+= zeta*omega_err
 	// Compute the net accumulated gyroscope bias
-	marg_state->omega_bias = Eigen::Quaternionf(marg_state->omega_bias.coeffs() + omega_err.coeffs()*zeta*delta_t);
-	marg_state->omega_bias.w() = 0.f; // no bias should accumulate on the w-component
+    Eigen::Quaternionf omega_bias= marg_state->omega_bias.ToEigenQuaternion();
+	omega_bias = Eigen::Quaternionf(omega_bias.coeffs() + omega_err.coeffs()*zeta*delta_t);
+	omega_bias.w() = 0.f; // no bias should accumulate on the w-component
+    marg_state->omega_bias.FromEigenQuaternion(omega_bias);
 
 	// Eqn 49) omega_corrected = omega - net_omega_bias
 	Eigen::Quaternionf omega = Eigen::Quaternionf(0.f, current_omega.x(), current_omega.y(), current_omega.z());
-	Eigen::Quaternionf corrected_omega = Eigen::Quaternionf(omega.coeffs() - marg_state->omega_bias.coeffs());
+	Eigen::Quaternionf corrected_omega = Eigen::Quaternionf(omega.coeffs() - omega_bias.coeffs());
 
 	// Compute the rate of change of the orientation purely from the gyroscope
 	// Eqn 12) q_dot = 0.5*q*omega
@@ -631,7 +657,7 @@ _psmove_orientation_fusion_madgwick_marg_update(
 	SEq_new.normalize();
 
 	// Save the new quaternion back into the orientation state
-	orientation_state->quaternion = SEq_new;
+	orientation_state->quaternion.FromEigenQuaternion(SEq_new);
 }
 
 static void
@@ -657,13 +683,15 @@ _psmove_orientation_fusion_complementary_marg_update(
 	//-----------------------------
 	// Compute the rate of change of the orientation purely from the gyroscope
 	// q_dot = 0.5*q*omega
+    Eigen::Quaternionf q_current= orientation_state->quaternion.ToEigenQuaternion();
+
 	Eigen::Quaternionf q_omega = Eigen::Quaternionf(0.f, current_omega.x(), current_omega.y(), current_omega.z());
-	Eigen::Quaternionf q_derivative = Eigen::Quaternionf(orientation_state->quaternion.coeffs()*0.5f) * q_omega;
+	Eigen::Quaternionf q_derivative = Eigen::Quaternionf(q_current.coeffs()*0.5f) * q_omega;
 
 	// Integrate the rate of change to get a new orientation
 	// q_new= q + q_dot*dT
 	Eigen::Quaternionf q_step = Eigen::Quaternionf(q_derivative.coeffs() * delta_t);
-	Eigen::Quaternionf ar_orientation = Eigen::Quaternionf(orientation_state->quaternion.coeffs() + q_step.coeffs());
+	Eigen::Quaternionf ar_orientation = Eigen::Quaternionf(q_current.coeffs() + q_step.coeffs());
 
 	// Make sure the resulting quaternion is normalized
 	ar_orientation.normalize();
@@ -675,7 +703,7 @@ _psmove_orientation_fusion_complementary_marg_update(
 	Eigen::Quaternionf mg_orientation;
 	bool mg_align_success =
 		psmove_alignment_quaternion_between_vector_frames(
-			mg_from, mg_to, 0.1f, orientation_state->quaternion, mg_orientation);
+			mg_from, mg_to, 0.1f, q_current, mg_orientation);
 
 	// Blending Update
 	//----------------
@@ -683,8 +711,8 @@ _psmove_orientation_fusion_complementary_marg_update(
 	{
 		// The final rotation is a blend between the integrated orientation and absolute rotation from the earth-frame
 		float mg_wight = orientation_state->fusion_state.complementary_marg_state.mg_weight;
-		orientation_state->quaternion =
-			psmove_quaternion_normalized_lerp(ar_orientation, mg_orientation, mg_wight);
+		orientation_state->quaternion.FromEigenQuaternion(
+			psmove_quaternion_normalized_lerp(ar_orientation, mg_orientation, mg_wight));
 
 		// Update the blend weight
 		orientation_state->fusion_state.complementary_marg_state.mg_weight =
@@ -692,6 +720,6 @@ _psmove_orientation_fusion_complementary_marg_update(
 	}
 	else
 	{
-		orientation_state->quaternion = ar_orientation;
+		orientation_state->quaternion.FromEigenQuaternion(ar_orientation);
 	}
 }

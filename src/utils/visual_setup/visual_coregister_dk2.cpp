@@ -141,7 +141,7 @@ public:
     bool initTracker();
     bool calibrateTracker();
     void initFusion();
-    void initFusionWthCoregTransform(const glm::mat4 &coregistrationTransform);
+    void initFusionWithCoregTransform(const glm::mat4 &coregistrationTransform);
 
     glm::mat4 computeWorldTransform(const glm::mat4 &dk2CameraToWorldTransform) const;
     void getTrackingCameraFrustum(const class DK2Context *dk2Context, TrackingCameraFrustum &outFrustum) const;
@@ -1260,7 +1260,7 @@ void TestCoregistrationStage::enter()
 
     if (m_app->getComputeCoregistrationStage()->getCoregistrationTransform(coreg_transform))
     {
-        m_app->getPSMoveContext()->initFusionWthCoregTransform(coreg_transform);
+        m_app->getPSMoveContext()->initFusionWithCoregTransform(coreg_transform);
     }
     else
     {
@@ -1543,7 +1543,7 @@ void PSMoveContext::initFusion()
 	m_PS3EyeToDK2CameraXform= glm::make_mat4(psmove_fusion_get_coregistration_matrix(m_fusion));
 }
 
-void PSMoveContext::initFusionWthCoregTransform(
+void PSMoveContext::initFusionWithCoregTransform(
 	const glm::mat4 &coregistrationTransform)
 {
     initFusion();
