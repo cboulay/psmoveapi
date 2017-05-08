@@ -32,124 +32,104 @@
 
 #include "psmove_tracker.h"
 
-#include "../../../external/iniparser/iniparser.h"
-
 #include "../camera_control.h"
 #include "../camera_control_private.h"
 
-void camera_control_backup_system_settings(CameraControl* cc, const char* file) {
-#if !defined(CAMERA_CONTROL_USE_CL_DRIVER) && defined(PSMOVE_USE_PSEYE)
-	HKEY hKey;
-	DWORD l = sizeof(DWORD);
-	DWORD AutoAEC = 0;
-	DWORD AutoAGC = 0;
-	DWORD AutoAWB = 0;
-	DWORD Exposure = 0;
-	DWORD Gain = 0;
-	DWORD wbB = 0;
-	DWORD wbG = 0;
-	DWORD wbR = 0;
-	char* PATH = CL_DRIVER_REG_PATH;
-	int err = RegOpenKeyEx(HKEY_CURRENT_USER, PATH, 0, KEY_ALL_ACCESS, &hKey);
-	if (err != ERROR_SUCCESS) {
-		printf("Error: %d Unable to open reg-key:  [HKCU]\%s!", err, PATH);
-		return;
-	}
-	RegQueryValueEx(hKey, "AutoAEC", NULL, NULL, (LPBYTE) &AutoAEC, &l);
-	RegQueryValueEx(hKey, "AutoAGC", NULL, NULL, (LPBYTE) &AutoAGC, &l);
-	RegQueryValueEx(hKey, "AutoAWB", NULL, NULL, (LPBYTE) &AutoAWB, &l);
-	RegQueryValueEx(hKey, "Exposure", NULL, NULL, (LPBYTE) &Exposure, &l);
-	RegQueryValueEx(hKey, "Gain", NULL, NULL, (LPBYTE) &Gain, &l);
-	RegQueryValueEx(hKey, "WhiteBalanceB", NULL, NULL, (LPBYTE) &wbB, &l);
-	RegQueryValueEx(hKey, "WhiteBalanceG", NULL, NULL, (LPBYTE) &wbG, &l);
-	RegQueryValueEx(hKey, "WhiteBalanceR", NULL, NULL, (LPBYTE) &wbR, &l);
+struct CameraControlSystemSettings {
+    DWORD AutoAEC;
+    DWORD AutoAGC;
+    DWORD AutoAWB;
+    DWORD Exposure;
+    DWORD Gain;
+    DWORD wbB;
+    DWORD wbG;
+    DWORD wbR;
+};
 
-	dictionary* ini = dictionary_new(0);
-	iniparser_set(ini, "PSEye", 0);
-	iniparser_set_int(ini, "PSEye:AutoAEC", AutoAEC);
-	iniparser_set_int(ini, "PSEye:AutoAGC", AutoAGC);
-	iniparser_set_int(ini, "PSEye:AutoAWB", AutoAWB);
-	iniparser_set_int(ini, "PSEye:Exposure", Exposure);
-	iniparser_set_int(ini, "PSEye:Gain", Gain);
-	iniparser_set_int(ini, "PSEye:WhiteBalanceB", wbB);
-	iniparser_set_int(ini, "PSEye:WhiteBalanceG", wbG);
-	iniparser_set_int(ini, "PSEye:WhiteBalanceR", wbG);
-	iniparser_save_ini(ini, file);
-	dictionary_del(ini);
+struct CameraControlSystemSettings *
+camera_control_backup_system_settings(CameraControl *cc)
+{
+#if !defined(CAMERA_CONTROL_USE_PS3EYE_DRIVER) && defined(PSMOVE_USE_PSEYE)
+    HKEY hKey;
+    DWORD l = sizeof(DWORD);
+
+    int err = RegOpenKeyEx(HKEY_CURRENT_USER, CL_DRIVER_REG_PATH, 0, KEY_ALL_ACCESS, &hKey);
+    if (err != ERROR_SUCCESS) {
+        printf("Error: %d Unable to open reg-key:  [HKCU]\\%s!", err, CL_DRIVER_REG_PATH);
+        return NULL;
+    }
+
+    struct CameraControlSystemSettings *settings = calloc(1, sizeof(struct CameraControlSystemSettings));
+    RegQueryValueEx(hKey, "AutoAEC", NULL, NULL, (LPBYTE) &settings->AutoAEC, &l);
+    RegQueryValueEx(hKey, "AutoAGC", NULL, NULL, (LPBYTE) &settings->AutoAGC, &l);
+    RegQueryValueEx(hKey, "AutoAWB", NULL, NULL, (LPBYTE) &settings->AutoAWB, &l);
+    RegQueryValueEx(hKey, "Exposure", NULL, NULL, (LPBYTE) &settings->Exposure, &l);
+    RegQueryValueEx(hKey, "Gain", NULL, NULL, (LPBYTE) &settings->Gain, &l);
+    RegQueryValueEx(hKey, "WhiteBalanceB", NULL, NULL, (LPBYTE) &settings->wbB, &l);
+    RegQueryValueEx(hKey, "WhiteBalanceG", NULL, NULL, (LPBYTE) &settings->wbG, &l);
+    RegQueryValueEx(hKey, "WhiteBalanceR", NULL, NULL, (LPBYTE) &settings->wbR, &l);
+    RegCloseKey(hKey);
+
+    return settings;
+#else
+    return NULL;
+#endif
+}
+void
+camera_control_restore_system_settings(CameraControl *cc,
+        struct CameraControlSystemSettings *settings)
+{
+#if !defined(CAMERA_CONTROL_USE_PS3EYE_DRIVER) && defined(PSMOVE_USE_PSEYE)
+    if (settings) {
+        HKEY hKey;
+        DWORD l = sizeof(DWORD);
+
+        char* PATH = CL_DRIVER_REG_PATH;
+        int err = RegOpenKeyEx(HKEY_CURRENT_USER, PATH, 0, KEY_ALL_ACCESS, &hKey);
+        if (err != ERROR_SUCCESS) {
+            printf("Error: %d Unable to open reg-key:  [HKCU]\\%s!", err, PATH);
+            return;
+        }
+
+        RegSetValueEx(hKey, "AutoAEC", 0, REG_DWORD, (CONST BYTE *) &settings->AutoAEC, &l);
+        RegSetValueEx(hKey, "AutoAGC", 0, REG_DWORD, (CONST BYTE *) &settings->AutoAGC, &l);
+        RegSetValueEx(hKey, "AutoAWB", 0, REG_DWORD, (CONST BYTE *) &settings->AutoAWB, &l);
+        RegSetValueEx(hKey, "Exposure", 0, REG_DWORD, (CONST BYTE *) &settings->Exposure, &l);
+        RegSetValueEx(hKey, "Gain", 0, REG_DWORD, (CONST BYTE *) &settings->Gain, &l);
+        RegSetValueEx(hKey, "WhiteBalanceB", 0, REG_DWORD, (CONST BYTE *) &settings->wbB, &l);
+        RegSetValueEx(hKey, "WhiteBalanceG", 0, REG_DWORD, (CONST BYTE *) &settings->wbG, &l);
+        RegSetValueEx(hKey, "WhiteBalanceR", 0, REG_DWORD, (CONST BYTE *) &settings->wbR, &l);
+        RegCloseKey(hKey);
+
+        free(settings);
+    }
 #endif
 }
 
-void camera_control_restore_system_settings(CameraControl* cc, const char* file) {
-#if !defined(CAMERA_CONTROL_USE_CL_DRIVER) && defined(PSMOVE_USE_PSEYE)
-	int NOT_FOUND = -1;
-	int val;
-	HKEY hKey;
-	DWORD l = sizeof(DWORD);
+void camera_control_set_parameters(CameraControl* cc, int autoE, int autoG, int autoWB, int exposure, int gain, int wbRed, int wbGreen, int wbBlue, int contrast, int brightness, enum PSMove_Bool h_flip)
+{
+#if defined(CAMERA_CONTROL_USE_PS3EYE_DRIVER)
+	//autoE... setAutoExposure not defined in ps3eye.h
+	ps3eye_set_parameter(cc->eye, PS3EYE_AUTO_GAIN,				autoG > 0);
+	ps3eye_set_parameter(cc->eye, PS3EYE_AUTO_WHITEBALANCE,		autoWB > 0);
+	ps3eye_set_parameter(cc->eye, PS3EYE_EXPOSURE,				(int)((511 * exposure) / 0xFFFF));
+	ps3eye_set_parameter(cc->eye, PS3EYE_GAIN,					(int)((79 * gain) / 0xFFFF));
+	ps3eye_set_parameter(cc->eye, PS3EYE_BRIGHTNESS,			(int)((255 * brightness) / 0xFFFF));
+	ps3eye_set_parameter(cc->eye, PS3EYE_HFLIP, 				h_flip);
 
-	char* PATH = CL_DRIVER_REG_PATH;
-	int err = RegOpenKeyEx(HKEY_CURRENT_USER, PATH, 0, KEY_ALL_ACCESS, &hKey);
-	if (err != ERROR_SUCCESS) {
-		printf("Error: %d Unable to open reg-key:  [HKCU]\%s!", err, PATH);
-		return;
-	}
+	//ps3eye_set_parameter(cc->eye, PS3EYE_REDBALANCE, (int)((255 * wbRed) / 0xFFFF));
+	//wbGreen... setGreenBalance not defined in ps3eye.h
+	//ps3eye_set_parameter(cc->eye, PS3EYE_BLUEBALANCE, (int)((255 * wbBlue) / 0xFFFF));
+	//ps3eye_set_parameter(cc->eye, PS3EYE_CONTRAST, contrast);  // Transform unknown.
+	//ps3eye_set_parameter(cc->eye, PS3EYE_BRIGHTNESS, brightness);  // Transform unknown.
 
-	dictionary* ini = iniparser_load(file);
-	val = iniparser_getint(ini, "PSEye:AutoAEC", NOT_FOUND);
-	if (val != NOT_FOUND)
-		RegSetValueExA(hKey, "AutoAEC", 0, REG_DWORD, (CONST BYTE*) &val, l);
-
-	val = iniparser_getint(ini, "PSEye:AutoAGC", NOT_FOUND);
-	if (val != NOT_FOUND)
-		RegSetValueExA(hKey, "AutoAGC", 0, REG_DWORD, (CONST BYTE*) &val, l);
-
-	val = iniparser_getint(ini, "PSEye:AutoAWB", NOT_FOUND);
-	if (val != NOT_FOUND)
-		RegSetValueExA(hKey, "AutoAWB", 0, REG_DWORD, (CONST BYTE*) &val, l);
-
-	val = iniparser_getint(ini, "PSEye:Exposure", NOT_FOUND);
-	if (val != NOT_FOUND)
-		RegSetValueExA(hKey, "Exposure", 0, REG_DWORD, (CONST BYTE*) &val, l);
-
-	val = iniparser_getint(ini, "PSEye:Gain", NOT_FOUND);
-	if (val != NOT_FOUND)
-		RegSetValueExA(hKey, "Gain", 0, REG_DWORD, (CONST BYTE*) &val, l);
-
-	val = iniparser_getint(ini, "PSEye:WhiteBalanceR", NOT_FOUND);
-	if (val != NOT_FOUND)
-		RegSetValueExA(hKey, "WhiteBalanceR", 0, REG_DWORD, (CONST BYTE*) &val, l);
-
-	val = iniparser_getint(ini, "PSEye:WhiteBalanceB", NOT_FOUND);
-	if (val != NOT_FOUND)
-		RegSetValueExA(hKey, "WhiteBalanceB", 0, REG_DWORD, (CONST BYTE*) &val, l);
-
-	val = iniparser_getint(ini, "PSEye:WhiteBalanceG", NOT_FOUND);
-	if (val != NOT_FOUND)
-		RegSetValueExA(hKey, "WhiteBalanceG", 0, REG_DWORD, (CONST BYTE*) &val, l);
-
-	iniparser_freedict(ini);
-#endif
-}
-
-void camera_control_set_parameters(CameraControl* cc, int autoE, int autoG, int autoWB, int exposure, int gain, int wbRed, int wbGreen, int wbBlue, int contrast,
-		int brightness) {
-#if defined(CAMERA_CONTROL_USE_CL_DRIVER)
-	if (autoE >= 0)
-		CLEyeSetCameraParameter(cc->camera, CLEYE_AUTO_EXPOSURE, autoE > 0);
-	if (autoG >= 0)
-		CLEyeSetCameraParameter(cc->camera, CLEYE_AUTO_GAIN, autoG > 0);
-	if (autoWB >= 0)
-		CLEyeSetCameraParameter(cc->camera, CLEYE_AUTO_WHITEBALANCE, autoWB > 0);
-	if (exposure >= 0)
-		CLEyeSetCameraParameter(cc->camera, CLEYE_EXPOSURE, round((511 * exposure) / 0xFFFF));
-	if (gain >= 0)
-		CLEyeSetCameraParameter(cc->camera, CLEYE_GAIN, round((79 * gain) / 0xFFFF));
-	if (wbRed >= 0)
-		CLEyeSetCameraParameter(cc->camera, CLEYE_WHITEBALANCE_RED, round((255 * wbRed) / 0xFFFF));
-	if (wbGreen >= 0)
-		CLEyeSetCameraParameter(cc->camera, CLEYE_WHITEBALANCE_GREEN, round((255 * wbGreen) / 0xFFFF));
-	if (wbBlue >= 0)
-		CLEyeSetCameraParameter(cc->camera, CLEYE_WHITEBALANCE_BLUE, round((255 * wbBlue) / 0xFFFF));
-#elif defined(PSMOVE_USE_PSEYE)
+	/** The following parameters could be set but are not passed into this function:
+	* ps3eye_set_parameter(cc->eye, PS3EYE_SHARPNESS, ??);
+	* ps3eye_set_parameter(cc->eye, PS3EYE_HUE, ??);
+	* ps3eye_set_parameter(cc->eye, PS3EYE_HFLIP, ??);
+	* ps3eye_set_parameter(cc->eye, PS3EYE_VFLIP, ??);
+	**/
+#else
 	int val;
 	HKEY hKey;
 	DWORD l = sizeof(DWORD);
@@ -165,40 +145,22 @@ void camera_control_set_parameters(CameraControl* cc, int autoE, int autoG, int 
 	RegSetValueExA(hKey, "AutoAGC", 0, REG_DWORD, (CONST BYTE*) &val, l);
 	val = autoWB > 0;
 	RegSetValueExA(hKey, "AutoAWB", 0, REG_DWORD, (CONST BYTE*) &val, l);
-	val = round((511 * exposure) / 0xFFFF);
+	val = (int)((511 * exposure) / 0xFFFF);
 	RegSetValueExA(hKey, "Exposure", 0, REG_DWORD, (CONST BYTE*) &val, l);
-	val = round((79 * gain) / 0xFFFF);
+	val = (int)((79 * gain) / 0xFFFF);
 	RegSetValueExA(hKey, "Gain", 0, REG_DWORD, (CONST BYTE*) &val, l);
-	val = round((255 * wbRed) / 0xFFFF);
+	val = (int)((255 * wbRed) / 0xFFFF);
 	RegSetValueExA(hKey, "WhiteBalanceR", 0, REG_DWORD, (CONST BYTE*) &val, l);
-	val = round((255 * wbGreen) / 0xFFFF);
+	val = (int)((255 * wbGreen) / 0xFFFF);
 	RegSetValueExA(hKey, "WhiteBalanceG", 0, REG_DWORD, (CONST BYTE*) &val, l);
-	val = round((255 * wbBlue) / 0xFFFF);
+	val = (int)((255 * wbBlue) / 0xFFFF);
 	RegSetValueExA(hKey, "WhiteBalanceB", 0, REG_DWORD, (CONST BYTE*) &val, l);
 
 	// restart the camera capture with openCv
 	if (cc->capture) {
             cvReleaseCapture(&cc->capture);
         }
-
-    //autoE... setAutoExposure not defined in ps3eye.h
-    ps3eye_set_parameter(cc->eye, PS3EYE_AUTO_GAIN, autoG > 0);
-    ps3eye_set_parameter(cc->eye, PS3EYE_AUTO_WHITEBALANCE, autoWB > 0);
-    ps3eye_set_parameter(cc->eye, PS3EYE_EXPOSURE, round((511 * exposure) / 0xFFFF));
-    ps3eye_set_parameter(cc->eye, PS3EYE_GAIN, round((79 * gain) / 0xFFFF));
-    //ps3eye_set_parameter(cc->eye, PS3EYE_REDBALANCE, round((255 * wbRed) / 0xFFFF));
-    //wbGreen... setGreenBalance not defined in ps3eye.h
-    //ps3eye_set_parameter(cc->eye, PS3EYE_BLUEBALANCE, round((255 * wbBlue) / 0xFFFF));
-    //ps3eye_set_parameter(cc->eye, PS3EYE_CONTRAST, contrast);  // Transform unknown.
-    //ps3eye_set_parameter(cc->eye, PS3EYE_BRIGHTNESS, brightness);  // Transform unknown.
-
-    /** The following parameters could be set but are not passed into this function:
-     * ps3eye_set_parameter(cc->eye, PS3EYE_SHARPNESS, ??);
-     * ps3eye_set_parameter(cc->eye, PS3EYE_HUE, ??);
-     * ps3eye_set_parameter(cc->eye, PS3EYE_HFLIP, ??);
-     * ps3eye_set_parameter(cc->eye, PS3EYE_VFLIP, ??);
-     **/
-
+	 
 	int width, height;
 	get_metrics(&width, &height);
 

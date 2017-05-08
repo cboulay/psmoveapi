@@ -1,3 +1,4 @@
+#pragma once
 
  /**
  * PS Move API - An interface for the PS Move Motion Controller
@@ -28,26 +29,15 @@
  **/
 
 
-#ifndef MOVED_CLIENT_H
-#define MOVED_CLIENT_H
 
 
-#ifdef _WIN32
-#  include <winsock2.h>
-#  include <ws2tcpip.h>
-#else
-#  include <arpa/inet.h>
-#  include <netinet/in.h>
-#  include <netdb.h>
-#  include <sys/socket.h>
-#endif
+#include "../psmove_sockets.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
 #include <assert.h>
 #include <string.h>
-#include <unistd.h>
 #include <errno.h>
 
 #include "psmove_moved_protocol.h"
@@ -81,5 +71,3 @@ moved_client_send(moved_client *client, char req, char id, const unsigned char *
 
 void
 moved_client_destroy(moved_client *client);
-
-#endif

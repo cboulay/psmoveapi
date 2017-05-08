@@ -30,6 +30,7 @@
 
 #include "psmove.h"
 #include "../psmove_private.h"
+#include "../psmove_port.h"
 #include "moved_client.h"
 
 moved_client_list *
@@ -92,49 +93,33 @@ moved_client_list_destroy(moved_client_list *client_list)
 moved_client *
 moved_client_create(const char *hostname)
 {
-#ifdef _WIN32
-    /* "wsa" = Windows Sockets API, not a misspelling of "was" */
-    static int wsa_initialized = 0;
-
-    if (!wsa_initialized) {
-        WSADATA wsa_data;
-        assert(WSAStartup(MAKEWORD(1, 1), &wsa_data) == 0);
-        wsa_initialized = 1;
-    }
-#endif
+    psmove_port_initialize_sockets();
 
     moved_client *client = (moved_client*)calloc(1, sizeof(moved_client));
 
     client->hostname = strdup(hostname);
 
-    client->socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    client->socket = (int)socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     assert(client->socket != -1);
 
-    /**
-     * The receiving socket must have a timeout to not block indefinitely
-     *
-     * With Berkeley sockets, SO_RCVTIMEO takes a struct timeval, whereas
-     * Microsoft's WinSock takes a DWORD containing a milliseconds value.
-     **/
-#ifdef _WIN32
-    DWORD receive_timeout = MOVED_TIMEOUT_MS;
-#else
-    struct timeval receive_timeout = {
-        .tv_sec = MOVED_TIMEOUT_MS / 1000,
-        .tv_usec = (MOVED_TIMEOUT_MS % 1000) * 1000,
-    };
-#endif
-    assert(setsockopt(client->socket, SOL_SOCKET, SO_RCVTIMEO,
-                &receive_timeout, sizeof(receive_timeout)) == 0);
+    psmove_port_set_socket_timeout_ms(client->socket, MOVED_TIMEOUT_MS);
 
     client->moved_addr.sin_family = AF_INET;
     client->moved_addr.sin_port = htons(MOVED_UDP_PORT);
-#ifdef _WIN32
+
+
     client->moved_addr.sin_addr.s_addr = inet_addr(hostname);
+
+    // If hostname failed to convert to an address, it's probably an actual name, so try to resolve the name to IP
+    if (client->moved_addr.sin_addr.s_addr == INADDR_NONE)
+    {
+        struct hostent *remoteHost = gethostbyname(hostname);
+
+        if (remoteHost->h_addrtype == AF_INET) 
+            client->moved_addr.sin_addr.s_addr = *(u_long *)remoteHost->h_addr_list[0];
+    }
+
     assert(client->moved_addr.sin_addr.s_addr != INADDR_NONE);
-#else
-    assert(inet_pton(AF_INET, hostname, &(client->moved_addr.sin_addr)) != 0);
-#endif
 
     return client;
 }
@@ -152,14 +137,14 @@ moved_client_send(moved_client *client, char req, char id, const unsigned char *
     }
 
     while (retry_count < MOVED_MAX_RETRIES) {
-        if (sendto(client->socket, client->request_buf,
+        if (sendto(client->socket, (char*)client->request_buf,
                     sizeof(client->request_buf), 0,
                     (struct sockaddr *)&(client->moved_addr),
                     sizeof(client->moved_addr)) >= 0)
         {
             switch (req) {
                 case MOVED_REQ_COUNT_CONNECTED:
-                    if (recv(client->socket, client->read_response_buf,
+                    if (recv(client->socket, (char*)client->read_response_buf,
                                 sizeof(client->read_response_buf), 0) == -1) {
                         retry_count++;
                         continue;
@@ -168,7 +153,7 @@ moved_client_send(moved_client *client, char req, char id, const unsigned char *
                     break;
                 case MOVED_REQ_READ:
                 case MOVED_REQ_SERIAL:
-                    if (recv(client->socket, client->read_response_buf,
+                    if (recv(client->socket, (char*)client->read_response_buf,
                                 sizeof(client->read_response_buf), 0) == -1) {
                         retry_count++;
                         continue;
@@ -207,7 +192,7 @@ moved_client_send(moved_client *client, char req, char id, const unsigned char *
 void
 moved_client_destroy(moved_client *client)
 {
-    close(client->socket);
+    psmove_port_close_socket(client->socket);
     free(client);
 }
 

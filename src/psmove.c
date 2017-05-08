@@ -28,59 +28,29 @@
  **/
 
 #include "psmove.h"
+#include "psmove_port.h"
 #include "psmove_private.h"
 #include "psmove_calibration.h"
 #include "psmove_orientation.h"
+#include "math/psmove_vector.h"
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <stddef.h>
 #include <ctype.h>
 #include <string.h>
 #include <wchar.h>
-#include <unistd.h>
-#include <sys/time.h>
 #include <sys/stat.h>
 #include <math.h>
 #include <limits.h>
 
-/* OS-specific includes, for getting the Bluetooth address */
-#ifdef __APPLE__
-#  include "platform/psmove_osxsupport.h"
-#  include <sys/syslimits.h>
-#  include <sys/stat.h>
-#endif
-
 #ifdef __linux
-#  include <bluetooth/bluetooth.h>
-#  include <bluetooth/hci.h>
-#  include <bluetooth/hci_lib.h>
-#  include <sys/ioctl.h>
-#  include <linux/limits.h>
-#  include <pthread.h>
-#  include <unistd.h>
-#  define PSMOVE_USE_PTHREADS
-#  include "platform/psmove_linuxsupport.h"
-#endif
-
-#ifdef _WIN32
-#  include <windows.h>
-#  include <bthsdpdef.h>
-#  include <bluetoothapis.h>
-#  include "platform/psmove_winsupport.h"
-#ifndef PATH_MAX
-#  define PATH_MAX MAX_PATH
-#endif
-#  define ENV_USER_HOME "APPDATA"
-#  define PATH_SEP "\\"
-#else
-#  define ENV_USER_HOME "HOME"
-#  define PATH_SEP "/"
+#define PSMOVE_USE_PTHREADS
 #endif
 
 #include "daemon/moved_client.h"
 #include "hidapi.h"
-
 
 /* Begin private definitions */
 
@@ -220,36 +190,6 @@ typedef struct {
     unsigned char extdata[PSMOVE_EXT_DATA_BUF_SIZE]; /* external device data (EXT port) */
 } PSMove_Data_Input;
 
-typedef struct {
-    int x;
-    int y;
-    int z;
-} PSMove_3AxisVector;
-
-int
-psmove_3axisvector_min(PSMove_3AxisVector vector)
-{
-    if (vector.x < vector.y && vector.x < vector.z) {
-        return vector.x;
-    } else if (vector.y < vector.z) {
-        return vector.y;
-    } else {
-        return vector.z;
-    }
-}
-
-int
-psmove_3axisvector_max(PSMove_3AxisVector vector)
-{
-    if (vector.x > vector.y && vector.x > vector.z) {
-        return vector.x;
-    } else if (vector.y > vector.z) {
-        return vector.y;
-    } else {
-        return vector.z;
-    }
-}
-
 struct _PSMove {
     /* Device type (hidapi-based or moved-based */
     enum PSMove_Device_Type type;
@@ -296,6 +236,9 @@ struct _PSMove {
     /* Is orientation tracking currently enabled? */
     enum PSMove_Bool orientation_enabled;
 
+	/* The direction of the magnetic field found during calibration */
+	PSMove_3AxisVector magnetometer_calibration_direction;
+
     /* Minimum and maximum magnetometer values observed this session */
     PSMove_3AxisVector magnetometer_min;
     PSMove_3AxisVector magnetometer_max;
@@ -306,16 +249,13 @@ struct _PSMove {
     pthread_mutex_t led_write_mutex;
     pthread_cond_t led_write_new_data;
     unsigned char led_write_thread_write_queued;
-    unsigned char led_write_last_result;
+    int led_write_failures_since_last_success;
 #endif
 
-#ifdef _WIN32
-    /* Nonzero if this device is a Bluetooth device (on Windows only) */
-    unsigned char is_bluetooth;
-#endif
+    enum PSMove_Connection_Type connection_type;
 };
 
-void
+enum PSMove_Bool
 psmove_load_magnetometer_calibration(PSMove *move);
 
 /* End private definitions */
@@ -326,26 +266,6 @@ static int psmove_remote_disabled = 0;
 
 /* Number of valid, open PSMove* handles "in the wild" */
 static int psmove_num_open_handles = 0;
-
-/* Private functionality needed by the Linux version */
-#if defined(__linux)
-
-int _psmove_linux_bt_dev_info(int s, int dev_id, long arg)
-{
-    struct hci_dev_info di = { .dev_id = dev_id };
-    unsigned char *btaddr = (void*)arg;
-    int i;
-
-    if (ioctl(s, HCIGETDEVINFO, (void *) &di) == 0) {
-        for (i=0; i<6; i++) {
-            btaddr[i] = di.bdaddr.b[i];
-        }
-    }
-
-    return 0;
-}
-
-#endif /* defined(__linux) */
 
 
 #if defined(PSMOVE_USE_PTHREADS)
@@ -366,28 +286,19 @@ _psmove_led_write_thread_proc(void *data)
             break;
         }
 
-        do {
-            /* Create a local copy of the LED state */
-            memcpy(&leds, &(move->leds), sizeof(leds));
-            move->led_write_thread_write_queued = 0;
+        psmove_util_sleep_ms(16);
 
-            long started = psmove_util_get_ticks();
+        /* Create a local copy of the LED state */
+        memcpy(&leds, &(move->leds), sizeof(leds));
+        move->led_write_thread_write_queued = 0;
 
-            int res = hid_write(move->handle, (unsigned char*)(&leds),
-                    sizeof(leds));
-            if (res== sizeof(leds)) {
-                move->led_write_last_result = Update_Success;
-            } else {
-                psmove_DEBUG("Threaded LED update failed (wrote %d)\n", res);
-                move->led_write_last_result = Update_Failed;
-            }
-
-            psmove_DEBUG("hid_write(%d) = %ld ms\n",
-                    move->id,
-                    psmove_util_get_ticks() - started);
-
-            pthread_yield();
-        } while (memcmp(&leds, &(move->leds), sizeof(leds)) != 0);
+        int res = hid_write(move->handle, (unsigned char*)(&leds), sizeof(leds));
+        // FIXME: On Linux-on-ARM at least, res is always zero!?
+        if (res != sizeof(leds) && res != 0) {
+            move->led_write_failures_since_last_success++;
+        } else {
+            move->led_write_failures_since_last_success = 0;
+        }
     }
 
     return NULL;
@@ -466,7 +377,10 @@ _psmove_read_data(PSMove *move, unsigned char *data, int length)
     assert(data != NULL);
     assert(length >= (sizeof(move->input) + 1));
 
-    data[0] = psmove_poll(move);
+	int res = psmove_poll(move);
+	assert(res <= 0xFF);
+
+    data[0] = (unsigned char)res;
     memcpy(data+1, &(move->input), sizeof(move->input));
 }
 
@@ -556,6 +470,7 @@ psmove_connect_internal(wchar_t *serial, char *path, int id)
 
     PSMove *move = (PSMove*)calloc(1, sizeof(PSMove));
     move->type = PSMove_HIDAPI;
+    move->connection_type = Conn_Unknown;
 
     /* Make sure the first LEDs update will go through (+ init get_ticks) */
     move->last_leds_update = psmove_util_get_ticks() - PSMOVE_MAX_LED_INHIBIT_MS;
@@ -563,7 +478,9 @@ psmove_connect_internal(wchar_t *serial, char *path, int id)
 #ifdef _WIN32
     /* Windows Quirk: USB devices have "0" as serial, BT devices their addr */
     if (serial != NULL && wcslen(serial) > 1) {
-        move->is_bluetooth = 1;
+        move->connection_type = Conn_Bluetooth;
+    } else {
+        move->connection_type = Conn_USB;
     }
     serial = NULL;  // Set the serial to NULL, even if BT device, to use psmove_get_serial below.
 
@@ -597,7 +514,7 @@ psmove_connect_internal(wchar_t *serial, char *path, int id)
     if (path != NULL) {
         move->device_path = strdup(path);
     }
-    if (serial == NULL && path != NULL) {
+    if ((serial == NULL || wcslen(serial) == 0) && path != NULL) {
         move->handle = hid_open_path(path);
     } else {
         move->handle = hid_open(PSMOVE_VID, PSMOVE_PID, serial);
@@ -627,7 +544,23 @@ psmove_connect_internal(wchar_t *serial, char *path, int id)
         move->serial_number = psmove_get_serial(move);
     }
 
-
+    // Recently disconnected controllers might still show up in hidapi (especially Windows).
+    if (!move->serial_number) {
+        if (move->handle) {
+            hid_close(move->handle);
+        }
+        if (move->handle_addr) {  // _WIN32 only
+            hid_close(move->handle_addr);
+        }
+        free(move);
+        return NULL;
+    } else if (move->connection_type == Conn_Unknown) {
+        if (strlen(move->serial_number) == 0) {
+            move->connection_type = Conn_USB;
+        } else {
+            move->connection_type = Conn_Bluetooth;
+        }
+    }
 
     /**
      * Normalize "aa-bb-cc-dd-ee-ff" (OS X format) into "aa:bb:cc:dd:ee:ff"
@@ -639,7 +572,7 @@ psmove_connect_internal(wchar_t *serial, char *path, int id)
             *tmp = ':';
         }
 
-        *tmp = tolower(*tmp);
+        *tmp = (char)tolower(*tmp);
         tmp++;
     }
 
@@ -652,8 +585,7 @@ psmove_connect_internal(wchar_t *serial, char *path, int id)
             NULL,
             _psmove_led_write_thread_proc,
             (void*)move) == 0, NULL);
-    /* Assume that the first LED write will succeed */
-    move->led_write_last_result = Update_Success;
+    move->led_write_failures_since_last_success = 0;
 #endif
 
     /* Bookkeeping of open handles (for psmove_reinit) */
@@ -762,7 +694,7 @@ _psmove_set_operation_mode(PSMove *move, enum PSMove_Operation_Mode mode)
 {
     unsigned char buf[10];
     int res;
-    int mode_magic_val;
+    char mode_magic_val;
 
     psmove_return_val_if_fail(move != NULL, PSMove_False);
 
@@ -795,6 +727,9 @@ psmove_connect_remote_by_id(int id, moved_client *client, int remote_id)
     PSMove *move = (PSMove*)calloc(1, sizeof(PSMove));
     move->type = PSMove_MOVED;
 
+    // By default, all moved-provided controllers are considered Bluetooth
+    move->connection_type = Conn_Bluetooth;
+
     move->client = client;
     move->remote_id = remote_id;
 
@@ -808,7 +743,7 @@ psmove_connect_remote_by_id(int id, moved_client *client, int remote_id)
     move->serial_number = (char*)calloc(PSMOVE_MAX_SERIAL_LENGTH, sizeof(char));
 
     if (moved_client_send(move->client, MOVED_REQ_SERIAL,
-                move->remote_id, NULL)) {
+                (char)move->remote_id, NULL)) {
         /* Retrieve the serial number from the remote host */
         strncpy(move->serial_number, (char*)move->client->read_response_buf,
                 PSMOVE_MAX_SERIAL_LENGTH);
@@ -826,6 +761,25 @@ psmove_connect_remote_by_id(int id, moved_client *client, int remote_id)
     psmove_num_open_handles++;
 
     return move;
+}
+
+static int
+compare_hid_device_info_ptr(const void *a, const void *b)
+{
+    struct hid_device_info *dev_a = *(struct hid_device_info **)a;
+    struct hid_device_info *dev_b = *(struct hid_device_info **)b;
+
+    if ((dev_a->serial_number != NULL) && (wcslen(dev_a->serial_number) != 0) &&
+        (dev_b->serial_number != NULL) && (wcslen(dev_b->serial_number) != 0)) {
+        return wcscmp(dev_a->serial_number, dev_b->serial_number);
+    }
+
+    if (dev_a->path != NULL && dev_b->path != NULL) {
+        return strcmp(dev_a->path, dev_b->path);
+    }
+
+    psmove_WARNING("Cannot compare serial number or path when sorting devices");
+    return 0;
 }
 
 PSMove *
@@ -855,29 +809,56 @@ psmove_connect_by_id(int id)
     }
 
     struct hid_device_info *devs, *cur_dev;
-    int count = 0;
     PSMove *move = NULL;
 
     devs = hid_enumerate(PSMOVE_VID, PSMOVE_PID);
+
+    // Count available devices
+    int available = 0;
+    for (cur_dev=devs, available=0; cur_dev != NULL; cur_dev = cur_dev->next, available++);
+
+    // Sort list of devices to have stable ordering of devices
+    struct hid_device_info **devs_sorted = calloc(available, sizeof(struct hid_device_info *));
     cur_dev = devs;
-    while (cur_dev) {
+    int i;
+    for (i=0; i<available; i++) {
+        devs_sorted[i] = cur_dev;
+        cur_dev = cur_dev->next;
+    }
+    qsort((void *)devs_sorted, available, sizeof(struct hid_device_info *), compare_hid_device_info_ptr);
+#if defined(PSMOVE_DEBUG)
+    for (i=0; i<available; i++) {
+        cur_dev = devs_sorted[i];
+        char tmp[64];
+        wcstombs(tmp, cur_dev->serial_number, sizeof(tmp));
+        printf("devs_sorted[%d]: (handle=%p, serial=%s, path=%s)\n", i, cur_dev, tmp, cur_dev->path);
+    }
+#endif /* defined(PSMOVE_DEBUG) */
+
 #ifdef _WIN32
+    int count = 0;
+    for (i=0; i<available; i++) {
+        cur_dev = devs_sorted[i];
+
         if (strstr(cur_dev->path, "&col01#") != NULL) {
-#endif
             if (count == id) {
-                move = psmove_connect_internal(cur_dev->serial_number,
-                        cur_dev->path, id);
+                move = psmove_connect_internal(cur_dev->serial_number, cur_dev->path, id);
                 break;
             }
-#ifdef _WIN32
         } else {
             count--;
         }
-#endif
 
         count++;
-        cur_dev = cur_dev->next;
     }
+#else
+    if (id < available) {
+        cur_dev = devs_sorted[id];
+        move = psmove_connect_internal(cur_dev->serial_number, cur_dev->path, id);
+    }
+#endif
+
+    free(devs_sorted);
     hid_free_enumeration(devs);
 
     return move;
@@ -1047,60 +1028,19 @@ psmove_pair(PSMove *move)
         return PSMove_False;
     }
 
-
-#if defined(__APPLE__)
-    char *btaddr_string = macosx_get_btaddr();
-    if (btaddr_string == NULL) {
+    char *host = psmove_port_get_host_bluetooth_address();
+    if (host == NULL) {
         fprintf(stderr, "WARNING: Can't determine Bluetooth address.\n"
                 "Make sure Bluetooth is turned on.\n");
     }
-    psmove_return_val_if_fail(btaddr_string != NULL, PSMove_False);
-    if (!_psmove_btaddr_from_string(btaddr_string, &btaddr)) {
-        free(btaddr_string);
+
+    psmove_return_val_if_fail(host != NULL, PSMove_False);
+    if (!_psmove_btaddr_from_string(host, &btaddr)) {
         return PSMove_False;
     }
-    free(btaddr_string);
-#elif defined(__linux)
-    PSMove_Data_BTAddr blank;
-    memset(blank, 0, sizeof(PSMove_Data_BTAddr));
-    memset(btaddr, 0, sizeof(PSMove_Data_BTAddr));
-    hci_for_each_dev(HCI_UP, _psmove_linux_bt_dev_info, (long)btaddr);
-    if(memcmp(btaddr, blank, sizeof(PSMove_Data_BTAddr))==0) {
-        fprintf(stderr, "WARNING: Can't determine Bluetooth address.\n"
-                "Make sure Bluetooth is turned on.\n");
-        return PSMove_False;
-    }
-#elif defined(_WIN32)
-    HANDLE hRadio;
-    if (windows_get_first_bluetooth_radio(&hRadio) != 0 || !hRadio) {
-        psmove_WARNING("Failed to find a Bluetooth radio");
-        return PSMove_False;
-    }
-
-    BLUETOOTH_RADIO_INFO radioInfo;
-    radioInfo.dwSize = sizeof(BLUETOOTH_RADIO_INFO);
-
-    if (BluetoothGetRadioInfo(hRadio, &radioInfo) != ERROR_SUCCESS) {
-        psmove_CRITICAL("BluetoothGetRadioInfo");
-        CloseHandle(hRadio);
-        return PSMove_False;
-    }
-
-    int i;
-    for (i=0; i<6; i++) {
-        btaddr[i] = radioInfo.address.rgBytes[i];
-    }
-
-#else
-    /* TODO: Implement for other OSes (if any?) */
-    return PSMove_False;
-#endif
 
     if (memcmp(current_host, btaddr, sizeof(PSMove_Data_BTAddr)) != 0) {
         if (!psmove_set_btaddr(move, &btaddr)) {
-#if defined(_WIN32)
-            CloseHandle(hRadio);
-#endif
             return PSMove_False;
         }
     } else {
@@ -1108,24 +1048,24 @@ psmove_pair(PSMove *move)
     }
 
     char *addr = psmove_get_serial(move);
-    char *host = _psmove_btaddr_to_string(btaddr);
 
-#if defined(__linux)
-    /* Add entry to Bluez' bluetoothd state file */
-    linux_bluez_register_psmove(addr, host);
-#endif
-
-#if defined(__APPLE__)
-    /* Add entry to the com.apple.Bluetooth.plist file */
-    macosx_blued_register_psmove(addr);
-#endif
-
-#if defined(_WIN32)
-    windows_register_psmove(addr, hRadio);
-    CloseHandle(hRadio);
-#endif
+    psmove_port_register_psmove(addr, host);
 
     free(addr);
+    free(host);
+
+    return PSMove_True;
+}
+
+enum PSMove_Bool
+psmove_host_pair_custom(const char *addr)
+{
+    char *host = psmove_port_get_host_bluetooth_address();
+
+    psmove_return_val_if_fail(host != NULL, PSMove_False);
+
+    psmove_port_register_psmove(addr, host);
+
     free(host);
 
     return PSMove_True;
@@ -1158,15 +1098,7 @@ psmove_pair_custom(PSMove *move, const char *new_host_string)
     char *addr = psmove_get_serial(move);
     char *host = _psmove_btaddr_to_string(new_host);
 
-#if defined(__linux)
-    /* Add entry to Bluez' bluetoothd state file */
-    linux_bluez_register_psmove(addr, host);
-#endif
-
-#if defined(__APPLE__)
-    /* Add entry to the com.apple.Bluetooth.plist file */
-    macosx_blued_register_psmove(addr);
-#endif
+    psmove_port_register_psmove(addr, host);
 
     free(addr);
     free(host);
@@ -1179,27 +1111,7 @@ psmove_connection_type(PSMove *move)
 {
     psmove_return_val_if_fail(move != NULL, Conn_Unknown);
 
-    if (move->type == PSMove_MOVED) {
-        return Conn_Bluetooth;
-    }
-
-#if defined(_WIN32)
-    if (move->is_bluetooth) {
-        return Conn_Bluetooth;
-    } else {
-        return Conn_USB;
-    }
-#endif
-
-    if (move->serial_number == NULL) {
-        return Conn_Unknown;
-    }
-
-    if (strlen(move->serial_number) == 0) {
-        return Conn_USB;
-    }
-
-    return Conn_Bluetooth;
+    return move->connection_type;
 }
 
 int
@@ -1214,7 +1126,7 @@ _psmove_btaddr_from_string(const char *string, PSMove_Data_BTAddr *dest)
     for (i=0; i<6; i++) {
         value = strtol(string + i*3, NULL, 16);
         psmove_return_val_if_fail(value >= 0x00 && value <= 0xFF, 0);
-        tmp[5-i] = value;
+        tmp[5-i] = (unsigned char)value;
     }
 
     if (dest != NULL) {
@@ -1333,7 +1245,7 @@ psmove_update_leds(PSMove *move)
              * Can only return the last result, but assume that we can either
              * write successfully or not at all, this should be good enough.
              **/
-            return move->led_write_last_result;
+            return (move->led_write_failures_since_last_success < 100) ? Update_Success : Update_Failed;
 #else
             if (hid_write(move->handle, (unsigned char*)(&(move->leds)),
                     sizeof(move->leds)) == sizeof(move->leds)) {
@@ -1351,7 +1263,7 @@ psmove_update_leds(PSMove *move)
              * updates, a few dropped packets are normally no problem.
              **/
             if (moved_client_send(move->client, MOVED_REQ_WRITE,
-                        move->remote_id, (unsigned char*)(&move->leds))) {
+                        (char)move->remote_id, (unsigned char*)(&move->leds))) {
                 return Update_Success;
             } else {
                 return Update_Failed;
@@ -1388,7 +1300,7 @@ psmove_poll(PSMove *move)
             break;
         case PSMove_MOVED:
             if (moved_client_send(move->client, MOVED_REQ_READ,
-                        move->remote_id, NULL)) {
+                        (char)move->remote_id, NULL)) {
                 /**
                  * The input buffer is stored at offset 1 (the first byte
                  * contains the return value of the remote psmove_poll())
@@ -1670,11 +1582,11 @@ psmove_get_temperature_in_celsius(PSMove *move)
 
     for (i = 0; i < 80; i++) {
         if (temperature_lookup[i] > raw_value) {
-            return i - 10;
+            return (float)(i - 10);
         }
     }
 
-    return 70;
+    return 70.0f;
 }
 
 unsigned char
@@ -1800,50 +1712,60 @@ psmove_get_gyroscope_frame(PSMove *move, enum PSMove_Frame frame,
 }
 
 void
+psmove_get_magnetometer_3axisvector(PSMove *move, PSMove_3AxisVector *out_m)
+{
+    psmove_return_if_fail(move != NULL);
+
+	PSMove_3AxisVector m;
+	int mx, my, mz;
+    psmove_get_magnetometer(move, &mx, &my, &mz);
+	m= psmove_3axisvector_xyz((float)mx, (float)my, (float)mz);
+
+    /* Update minimum and max components */
+	move->magnetometer_min = psmove_3axisvector_min_vector(&move->magnetometer_min, &m);
+	move->magnetometer_max = psmove_3axisvector_max_vector(&move->magnetometer_max, &m);
+
+    /* Map [min..max] to [-1..+1] */
+	if (out_m)
+	{
+		PSMove_3AxisVector range = psmove_3axisvector_subtract(&move->magnetometer_max, &move->magnetometer_min);
+		PSMove_3AxisVector offset = psmove_3axisvector_subtract(&m, &move->magnetometer_min);
+		
+		// 2*(raw-move->magnetometer_min)/(move->magnetometer_max - move->magnetometer_min) - <1,1,1>
+		*out_m = psmove_3axisvector_divide_by_vector_with_default(&offset, &range, k_psmove_vector_zero);
+		*out_m = psmove_3axisvector_scale(out_m, 2.f);
+		*out_m = psmove_3axisvector_subtract(out_m, k_psmove_vector_one);
+
+		// The magnetometer y-axis is flipped compared to the accelerometer and gyro.
+		// Flip it back around to get it into the same space.
+		out_m->y = -out_m->y;	
+	}
+}
+
+void
 psmove_get_magnetometer_vector(PSMove *move,
         float *mx, float *my, float *mz)
 {
-    PSMove_3AxisVector raw;
+	psmove_return_if_fail(move != NULL);
 
-    psmove_return_if_fail(move != NULL);
+	PSMove_3AxisVector m;
 
-    psmove_get_magnetometer(move, &raw.x, &raw.y, &raw.z);
+	psmove_get_magnetometer_3axisvector(move, &m);
+	
+	if (mx)
+	{
+		*mx= m.x;
+	}
+	
+	if (my)
+	{
+		*my= m.y;
+	}
 
-    /* Update minimum values */
-    if (raw.x < move->magnetometer_min.x) {
-        move->magnetometer_min.x = raw.x;
-    }
-    if (raw.y < move->magnetometer_min.y) {
-        move->magnetometer_min.y = raw.y;
-    }
-    if (raw.z < move->magnetometer_min.z) {
-        move->magnetometer_min.z = raw.z;
-    }
-
-    /* Update maximum values */
-    if (raw.x > move->magnetometer_max.x) {
-        move->magnetometer_max.x = raw.x;
-    }
-    if (raw.y > move->magnetometer_max.y) {
-        move->magnetometer_max.y = raw.y;
-    }
-    if (raw.z > move->magnetometer_max.z) {
-        move->magnetometer_max.z = raw.z;
-    }
-
-    /* Map [min..max] to [-1..+1] */
-    if (mx) {
-        *mx = -1.f + 2.f * (float)(raw.x - move->magnetometer_min.x) /
-            (float)(move->magnetometer_max.x - move->magnetometer_min.x);
-    }
-    if (my) {
-        *my = -1.f + 2.f * (float)(raw.y - move->magnetometer_min.y) /
-            (float)(move->magnetometer_max.y - move->magnetometer_min.y);
-    }
-    if (mz) {
-        *mz = -1.f + 2.f * (float)(raw.z - move->magnetometer_min.z) /
-            (float)(move->magnetometer_max.z - move->magnetometer_min.z);
-    }
+	if (mz)
+	{
+		*mz= m.z;
+	}
 }
 
 enum PSMove_Bool
@@ -1897,13 +1819,8 @@ psmove_enable_orientation(PSMove *move, enum PSMove_Bool enabled)
 enum PSMove_Bool
 psmove_has_orientation(PSMove *move)
 {
-    psmove_return_val_if_fail(move != NULL, 0);
-    psmove_return_val_if_fail(move->orientation != NULL, 0);
-
-#if !defined(PSMOVE_WITH_MADGWICK_AHRS)
-    psmove_WARNING("Built without Madgwick AHRS - no orientation support");
-    return PSMove_False;
-#endif
+    psmove_return_val_if_fail(move != NULL, PSMove_False);
+    psmove_return_val_if_fail(move->orientation != NULL, PSMove_False);
 
     return move->orientation_enabled;
 }
@@ -1932,12 +1849,13 @@ psmove_reset_magnetometer_calibration(PSMove *move)
 {
     psmove_return_if_fail(move != NULL);
 
+	move->magnetometer_calibration_direction = *k_psmove_vector_zero;
     move->magnetometer_min.x =
         move->magnetometer_min.y =
-        move->magnetometer_min.z = INT_MAX;
+        move->magnetometer_min.z = FLT_MAX;
     move->magnetometer_max.x =
         move->magnetometer_max.y =
-        move->magnetometer_max.z = INT_MIN;
+        move->magnetometer_max.z = FLT_MIN;
 }
 
 char *
@@ -1972,75 +1890,241 @@ psmove_save_magnetometer_calibration(PSMove *move)
     free(filename);
     psmove_return_if_fail(fp != NULL);
 
+	fprintf(fp, "mx,my,mz\n");
+	fprintf(fp, "%f,%f,%f\n", 
+		move->magnetometer_calibration_direction.x,
+		move->magnetometer_calibration_direction.y, 
+		move->magnetometer_calibration_direction.z);
     fprintf(fp, "axis,min,max\n");
-    fprintf(fp, "x,%d,%d\n", move->magnetometer_min.x, move->magnetometer_max.x);
-    fprintf(fp, "y,%d,%d\n", move->magnetometer_min.y, move->magnetometer_max.y);
-    fprintf(fp, "z,%d,%d\n", move->magnetometer_min.z, move->magnetometer_max.z);
+    fprintf(fp, "x,%f,%f\n", move->magnetometer_min.x, move->magnetometer_max.x);
+    fprintf(fp, "y,%f,%f\n", move->magnetometer_min.y, move->magnetometer_max.y);
+    fprintf(fp, "z,%f,%f\n", move->magnetometer_min.z, move->magnetometer_max.z);
 
     fclose(fp);
 }
 
-void
+enum PSMove_Bool
 psmove_load_magnetometer_calibration(PSMove *move)
 {
-    psmove_return_if_fail(move != NULL);
+	enum PSMove_Bool success = PSMove_False;
+    
+	if (move == NULL) {
+        return success;
+    }
+
     psmove_reset_magnetometer_calibration(move);
     char *filename = psmove_get_magnetometer_calibration_filename(move);
     FILE *fp = fopen(filename, "r");
     free(filename);
 
-    if (fp == NULL) {
+	if (fp == NULL) {
         char *addr = psmove_get_serial(move);
         psmove_WARNING("Magnetometer in %s not yet calibrated.\n", addr);
         free(addr);
-        return;
+		goto finish;
     }
 
-    char s_axis[5], s_min[4], s_max[4];
+	char s_mx[3], s_my[3], s_mz[3];
+	float mx, my, mz;
+	char s_axis[5], s_min[4], s_max[4];
     char c_axis;
-    int i_min, i_max;
+    float f_min, f_max;
     int result;
 
-    result = fscanf(fp, "%4s,%3s,%3s\n", s_axis, s_min, s_max);
+	result = fscanf(fp, "%2s,%2s,%2s\n", s_mx, s_my, s_mz);
+	psmove_goto_if_fail(result == 3, finish);
+	psmove_goto_if_fail(strcmp(s_mx, "mx") == 0, finish);
+	psmove_goto_if_fail(strcmp(s_my, "my") == 0, finish);
+	psmove_goto_if_fail(strcmp(s_mz, "mz") == 0, finish);
+
+	result = fscanf(fp, "%f,%f,%f\n", &mx, &my, &mz);
+	psmove_goto_if_fail(result == 3, finish);
+	move->magnetometer_calibration_direction = psmove_3axisvector_xyz(mx, my, mz);
+
+	result = fscanf(fp, "%4s,%3s,%3s\n", s_axis, s_min, s_max);
     psmove_goto_if_fail(result == 3, finish);
     psmove_goto_if_fail(strcmp(s_axis, "axis") == 0, finish);
     psmove_goto_if_fail(strcmp(s_min, "min") == 0, finish);
     psmove_goto_if_fail(strcmp(s_max, "max") == 0, finish);
 
-    result = fscanf(fp, "%c,%d,%d\n", &c_axis, &i_min, &i_max);
+    result = fscanf(fp, "%c,%f,%f\n", &c_axis, &f_min, &f_max);
     psmove_goto_if_fail(result == 3, finish);
     psmove_goto_if_fail(c_axis == 'x', finish);
-    move->magnetometer_min.x = i_min;
-    move->magnetometer_max.x = i_max;
+    move->magnetometer_min.x = f_min;
+    move->magnetometer_max.x = f_max;
 
-    result = fscanf(fp, "%c,%d,%d\n", &c_axis, &i_min, &i_max);
+    result = fscanf(fp, "%c,%f,%f\n", &c_axis, &f_min, &f_max);
     psmove_goto_if_fail(result == 3, finish);
     psmove_goto_if_fail(c_axis == 'y', finish);
-    move->magnetometer_min.y = i_min;
-    move->magnetometer_max.y = i_max;
+    move->magnetometer_min.y = f_min;
+    move->magnetometer_max.y = f_max;
 
-    result = fscanf(fp, "%c,%d,%d\n", &c_axis, &i_min, &i_max);
+    result = fscanf(fp, "%c,%f,%f\n", &c_axis, &f_min, &f_max);
     psmove_goto_if_fail(result == 3, finish);
     psmove_goto_if_fail(c_axis == 'z', finish);
-    move->magnetometer_min.z = i_min;
-    move->magnetometer_max.z = i_max;
+    move->magnetometer_min.z = f_min;
+    move->magnetometer_max.z = f_max;
+
+	success = PSMove_True;
 
 finish:
-    fclose(fp);
+	if (success == PSMove_False)
+	{
+		psmove_reset_magnetometer_calibration(move);
+	}
+    
+    if (fp != NULL)
+    {
+        fclose(fp);
+    }
+
+	return success;
 }
 
-int
+float
 psmove_get_magnetometer_calibration_range(PSMove *move)
 {
-    psmove_return_val_if_fail(move != NULL, 0.);
+    psmove_return_val_if_fail(move != NULL, 0);
 
-    PSMove_3AxisVector diff = {
-        move->magnetometer_max.x - move->magnetometer_min.x,
-        move->magnetometer_max.y - move->magnetometer_min.y,
-        move->magnetometer_max.z - move->magnetometer_min.z,
-    };
+	PSMove_3AxisVector diff = psmove_3axisvector_subtract(&move->magnetometer_max, &move->magnetometer_min);
 
-    return psmove_3axisvector_min(diff);
+    return psmove_3axisvector_min_component(&diff);
+}
+
+void
+psmove_set_orientation_fusion_type(PSMove *move, enum PSMoveOrientation_Fusion_Type fusion_type)
+{
+    psmove_return_if_fail(move != NULL);
+    psmove_return_if_fail(move->orientation != NULL);
+
+	psmove_orientation_set_fusion_type(move->orientation, fusion_type);
+}
+
+void
+psmove_set_calibration_pose(PSMove *move, enum PSMove_CalibrationPose_Type calibration_pose)
+{
+    switch (calibration_pose)
+    {
+    case CalibrationPose_Upright:
+        psmove_set_calibration_transform(move, k_psmove_identity_pose_upright);
+        break;
+    case CalibrationPose_LyingFlat:
+        psmove_set_calibration_transform(move, k_psmove_identity_pose_laying_flat);
+        break;
+    }
+}
+
+void
+psmove_set_calibration_transform(PSMove *move, const PSMove_3AxisTransform *transform)
+{
+    psmove_return_if_fail(move != NULL);
+    psmove_return_if_fail(move->orientation != NULL);
+
+	psmove_orientation_set_calibration_transform(move->orientation, transform);
+}
+
+void
+psmove_get_identity_gravity_calibration_direction(PSMove *move, PSMove_3AxisVector *out_a)
+{
+	*out_a= psmove_3axisvector_xyz(0.f, 1.f, 0.f);
+}
+
+void
+psmove_get_transformed_gravity_calibration_direction(PSMove *move, PSMove_3AxisVector *out_a)
+{
+	if (move != NULL)
+	{
+		*out_a= psmove_orientation_get_gravity_calibration_direction(move->orientation);
+	}
+	else
+	{
+		psmove_get_identity_gravity_calibration_direction(move, out_a);
+	}
+}
+
+void
+psmove_get_identity_magnetometer_calibration_direction(PSMove *move, PSMove_3AxisVector *out_m)
+{
+	psmove_return_if_fail(move != NULL);
+	psmove_return_if_fail(out_m != NULL);
+
+	*out_m= move->magnetometer_calibration_direction;
+}
+
+void
+psmove_get_transformed_magnetometer_calibration_direction(PSMove *move, PSMove_3AxisVector *out_m)
+{
+	if (move != NULL)
+	{
+		*out_m= psmove_orientation_get_magnetometer_calibration_direction(move->orientation);
+	}
+	else
+	{
+		psmove_get_identity_magnetometer_calibration_direction(move, out_m);
+	}
+}
+
+void
+psmove_set_magnetometer_calibration_direction(PSMove *move, PSMove_3AxisVector *m)
+{
+	psmove_return_if_fail(move != NULL);
+
+	move->magnetometer_calibration_direction = *m;
+}
+
+void
+psmove_set_sensor_data_basis(PSMove *move, enum PSMove_SensorDataBasis_Type basis_type)
+{
+    switch (basis_type)
+    {
+    case SensorDataBasis_Native:
+        psmove_set_sensor_data_transform(move, k_psmove_sensor_transform_identity);
+        break;
+    case SensorDataBasis_OpenGL:
+        psmove_set_sensor_data_transform(move, k_psmove_sensor_transform_opengl);
+        break;
+    }
+}
+
+void
+psmove_set_sensor_data_transform(PSMove *move, const PSMove_3AxisTransform *transform)
+{
+    psmove_return_if_fail(move != NULL);
+    psmove_return_if_fail(move->orientation != NULL);
+
+	psmove_orientation_set_sensor_data_transform(move->orientation, transform);
+}
+
+void
+psmove_get_transformed_magnetometer_direction(PSMove *move, PSMove_3AxisVector *out_m)
+{
+	psmove_return_if_fail(move != NULL);
+
+	*out_m= psmove_orientation_get_magnetometer_normalized_vector(move->orientation);
+}
+
+void
+psmove_get_transformed_accelerometer_frame_3axisvector(PSMove *move, enum PSMove_Frame frame, PSMove_3AxisVector *out_a)
+{
+	psmove_return_if_fail(move != NULL);
+
+	*out_a= psmove_orientation_get_accelerometer_vector(move->orientation, frame);
+}
+
+void
+psmove_get_transformed_accelerometer_frame_direction(PSMove *move, enum PSMove_Frame frame, PSMove_3AxisVector *out_a)
+{
+	psmove_return_if_fail(move != NULL);
+
+	*out_a= psmove_orientation_get_accelerometer_normalized_vector(move->orientation, frame);
+}
+
+void
+psmove_get_transformed_gyroscope_frame_3axisvector(PSMove *move, enum PSMove_Frame frame, PSMove_3AxisVector *out_w)
+{
+	psmove_return_if_fail(move != NULL);
+
+	*out_w= psmove_orientation_get_gyroscope_vector(move->orientation, frame);
 }
 
 void
@@ -2096,39 +2180,7 @@ psmove_disconnect(PSMove *move)
 long
 psmove_util_get_ticks()
 {
-#ifdef WIN32
-    static LARGE_INTEGER startup_time = { .QuadPart = 0 };
-    static LARGE_INTEGER frequency = { .QuadPart = 0 };
-    LARGE_INTEGER now;
-
-    if (frequency.QuadPart == 0) {
-        psmove_return_val_if_fail(QueryPerformanceFrequency(&frequency), 0);
-    }
-
-    psmove_return_val_if_fail(QueryPerformanceCounter(&now), 0);
-
-    /* The first time this function gets called, we init startup_time */
-    if (startup_time.QuadPart == 0) {
-        startup_time.QuadPart = now.QuadPart;
-    }
-
-    return (long)((now.QuadPart - startup_time.QuadPart) * 1000 /
-            frequency.QuadPart);
-#else
-    static long startup_time = 0;
-    long now;
-    struct timeval tv;
-
-    psmove_return_val_if_fail(gettimeofday(&tv, NULL) == 0, 0);
-    now = (tv.tv_sec * 1000 + tv.tv_usec / 1000);
-
-    /* The first time this function gets called, we init startup_time */
-    if (startup_time == 0) {
-        startup_time = now;
-    }
-
-    return (now - startup_time);
-#endif
+    return psmove_port_get_time_ms();
 }
 
 const char *
@@ -2137,8 +2189,7 @@ psmove_util_get_data_dir()
     static char dir[PATH_MAX];
 
     if (strlen(dir) == 0) {
-        strncpy(dir, getenv(ENV_USER_HOME), sizeof(dir));
-        strncat(dir, PATH_SEP ".psmoveapi", sizeof(dir));
+        snprintf(dir, sizeof(dir), "%s" PATH_SEP ".psmoveapi", getenv(ENV_USER_HOME));
     }
 
     return dir;
@@ -2151,7 +2202,7 @@ psmove_util_get_file_path(const char *filename)
     char *result;
     struct stat st;
 
-#ifndef __WIN32
+#ifndef _WIN32
     // if run as root, use system-wide data directory
     if (geteuid() == 0) {
         parent = PSMOVE_SYSTEM_DATA_DIR;
@@ -2184,7 +2235,7 @@ char *
 psmove_util_get_system_file_path(const char *filename)
 {
     char *result;
-    int len = strlen(PSMOVE_SYSTEM_DATA_DIR) + 1 + strlen(filename) + 1;
+    size_t len = strlen(PSMOVE_SYSTEM_DATA_DIR) + 1 + strlen(filename) + 1;
 
     result = malloc(len);
     if (result == NULL) {
@@ -2228,7 +2279,7 @@ psmove_util_get_env_string(const char *name)
 char *
 _psmove_normalize_btaddr(const char *addr, int lowercase, char separator)
 {
-    int count = strlen(addr);
+    size_t count = strlen(addr);
 
     if (count != 17) {
         psmove_WARNING("Invalid address: '%s'\n", addr);
@@ -2241,7 +2292,7 @@ _psmove_normalize_btaddr(const char *addr, int lowercase, char separator)
     for (i=0; i<strlen(addr); i++) {
         if (addr[i] >= 'A' && addr[i] <= 'F' && i % 3 != 2) {
             if (lowercase) {
-                result[i] = tolower(addr[i]);
+                result[i] = (char)tolower(addr[i]);
             } else {
                 result[i] = addr[i];
             }
@@ -2251,7 +2302,7 @@ _psmove_normalize_btaddr(const char *addr, int lowercase, char separator)
             if (lowercase) {
                 result[i] = addr[i];
             } else {
-                result[i] = toupper(addr[i]);
+                result[i] = (char)toupper(addr[i]);
             }
         } else if ((addr[i] == ':' || addr[i] == '-') && i % 3 == 2) {
             result[i] = separator;
@@ -2264,51 +2315,6 @@ _psmove_normalize_btaddr(const char *addr, int lowercase, char separator)
 
     result[count] = '\0';
     return result;
-}
-
-#if defined(__APPLE__)
-
-#define CLOCK_MONOTONIC 0
-
-static int
-clock_gettime(int unused, struct timespec *ts)
-{
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-
-    ts->tv_sec = tv.tv_sec;
-    ts->tv_nsec = tv.tv_usec * 1000;
-
-    return 0;
-}
-#endif /* __APPLE__ */
-
-PSMove_timestamp
-_psmove_timestamp()
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return ts;
-}
-
-PSMove_timestamp
-_psmove_timestamp_diff(PSMove_timestamp a, PSMove_timestamp b)
-{
-    struct timespec ts;
-    if (a.tv_nsec >= b.tv_nsec) {
-        ts.tv_sec = a.tv_sec - b.tv_sec;
-        ts.tv_nsec = a.tv_nsec - b.tv_nsec;
-    } else {
-        ts.tv_sec = a.tv_sec - b.tv_sec - 1;
-        ts.tv_nsec = 1000000000 + a.tv_nsec - b.tv_nsec;
-    }
-    return ts;
-}
-
-double
-_psmove_timestamp_value(PSMove_timestamp ts)
-{
-    return ts.tv_sec + ts.tv_nsec * 0.000000001;
 }
 
 void
@@ -2327,3 +2333,8 @@ _psmove_wait_for_button(PSMove *move, int button)
     }
 }
 
+void
+psmove_util_sleep_ms(uint32_t ms)
+{
+    psmove_port_sleep_ms(ms);
+}

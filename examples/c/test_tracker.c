@@ -31,7 +31,6 @@
 #include <stdio.h>
 
 #include <time.h>
-#include <unistd.h>
 #include <assert.h>
 
 #include "opencv2/core/core_c.h"
@@ -44,24 +43,29 @@
 int main(int arg, char** args) {
     int i;
     int count = psmove_count_connected();
-    PSMove* controllers[count];
 
     printf("### Found %d controllers.\n", count);
     if (count == 0) {
         return 1;
     }
 
+    PSMove **controllers = (PSMove **)calloc(count, sizeof(PSMove *));
+
     void *frame;
     int result;
 
     fprintf(stderr, "Trying to init PSMoveTracker...");
-    PSMoveTracker* tracker = psmove_tracker_new();
+    PSMoveTrackerSettings settings;
+    psmove_tracker_settings_set_default(&settings);
+    settings.color_mapping_max_age = 0;
+	settings.exposure_mode = Exposure_LOW;
+	settings.camera_mirror = PSMove_True;
+    PSMoveTracker* tracker = psmove_tracker_new_with_settings(&settings);
     if (!tracker)
     {
         fprintf(stderr, "Could not init PSMoveTracker.\n");
         return 1;
     }
-    psmove_tracker_set_mirror(tracker, PSMove_True);
     fprintf(stderr, "OK\n");
 
     for (i=0; i<count; i++) {
@@ -69,7 +73,7 @@ int main(int arg, char** args) {
         controllers[i] = psmove_connect_by_id(i);
         assert(controllers[i] != NULL);
 
-        while (1) {
+		for (;;) {
             printf("Calibrating controller %d...", i);
             fflush(stdout);
             result = psmove_tracker_enable(tracker, controllers[i]);
@@ -116,6 +120,7 @@ int main(int arg, char** args) {
     }
 
     psmove_tracker_free(tracker);
+    free(controllers);
     return 0;
 }
 

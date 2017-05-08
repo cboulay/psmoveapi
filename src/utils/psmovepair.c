@@ -30,13 +30,13 @@
 
 
 
-#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "psmove.h"
 #include "../psmove_private.h"
+#include "../psmove_port.h"
 
 #ifdef __linux
 #include "../daemon/moved_monitor.h"
@@ -63,7 +63,6 @@ int pair(const char *custom_addr)
 
         if (psmove_connection_type(move) != Conn_Bluetooth) {
             printf("PSMove #%d connected via USB.\n", i+1);
-            int result = 0;
 
             if (custom_addr != NULL) {
                 result = psmove_pair_custom(move, custom_addr);
@@ -96,8 +95,8 @@ int pair(const char *custom_addr)
 }
 
 #ifdef __linux
-void
-on_monitor_update(enum MonitorEvent event,
+static void
+on_monitor_update_pair(enum MonitorEvent event,
         enum MonitorEventDeviceType device_type,
         const char *path, const wchar_t *serial,
         void *user_data)
@@ -115,7 +114,7 @@ int run_daemon()
     // On Linux we use moved_monitor, which is based on udev, to detect
     // controller connection
 #ifdef __linux
-    moved_monitor *monitor = moved_monitor_new(on_monitor_update, NULL);
+    moved_monitor *monitor = moved_monitor_new(on_monitor_update_pair, NULL);
     int monitor_fd = moved_monitor_get_fd(monitor);
     struct pollfd pfd;
 
@@ -131,8 +130,8 @@ int run_daemon()
     moved_monitor_free(monitor);
 #else
     // On non-Linux systems we just try to pair every 5 seconds for now
-    while (1) {
-        sleep(5);
+    for(;;) {
+        psmove_port_sleep_ms(5000);
         pair(NULL);
     }
 #endif // __linux
@@ -160,17 +159,9 @@ int main(int argc, char* argv[])
         }
     }
 
-#ifdef __linux
-    /**
-     * In order to be able to start/stop bluetoothd and to
-     * add new entries to the Bluez configuration files, we
-     * need to run as root (platform/psmove_linuxsupport.c)
-     **/
-    if (geteuid() != 0) {
-        printf("This program must be run as root (or use sudo).\n");
+    if (!psmove_port_check_pairing_permissions()) {
         return 1;
     }
-#endif
 
     if (daemon_mode == 0) {
         if (custom_addr != 0) {

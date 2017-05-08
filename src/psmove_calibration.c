@@ -36,7 +36,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
-#include <libgen.h>
 #include <math.h>
 
 #define PSMOVE_CALIBRATION_EXTENSION ".calibration"
@@ -379,7 +378,7 @@ psmove_calibration_new(PSMove *move)
         psmove_calibration_get_usb_gyro_values(calibration,
                 &gx80, &gy80, &gz80);
 
-        float factor = (2.f * M_PI * 80.f) / 60.f;
+        float factor = (float)(2.f * M_PI * 80.f) / 60.f;
         calibration->gx = factor / (float)gx80;
         calibration->gy = factor / (float)gy80;
         calibration->gz = factor / (float)gz80;
@@ -492,9 +491,10 @@ psmove_calibration_load(PSMoveCalibration *calibration)
         // use system file in case local is not available
         fp = fopen(calibration->system_filename, "rb");
         if (fp == NULL) {
+            psmove_WARNING("No calibration file found (%s or %s)\n",
+                    calibration->filename, calibration->system_filename);
             return 0;
         }
-        return 0;
     }
 
     if (fread(calibration->usb_calibration,

@@ -30,14 +30,12 @@
 #include <stdio.h>
 
 #include <time.h>
-#include <unistd.h>
 #include <assert.h>
 #include <math.h>
 
 #include <vector>
 
 #include "psmove_examples_opengl.h"
-#include <SDL/SDL.h>
 
 #include "psmove.h"
 #include "psmove_tracker.h"
@@ -47,7 +45,6 @@ enum {
     NOTHING,
     WIRE_CUBE,
     SOLID_CUBE,
-    SOLID_TEAPOT,
     ITEM_MAX,
 };
 
@@ -92,7 +89,7 @@ Tracker::Tracker()
       m_fusion(psmove_fusion_new(m_tracker, 1., 1000.))
 {
     psmove_tracker_set_mirror(m_tracker, PSMove_True);
-    psmove_tracker_set_exposure(m_tracker, Exposure_HIGH);
+    psmove_tracker_set_exposure(m_tracker, Exposure_LOW);
 
     m_moves = (PSMove**)calloc(m_count, sizeof(PSMove*));
     m_items = (int*)calloc(m_count, sizeof(int));
@@ -240,7 +237,7 @@ Tracker::render()
             //glVertex3f(moved.x, moved.y, moved.z);
             glPushMatrix();
             glTranslatef(moved.x, moved.y, moved.z);
-            glutSolidCube(.5);
+			drawSolidCube(.5f);
             glPopMatrix();
         }
         //glEnd();
@@ -253,64 +250,50 @@ Tracker::render()
 
         if (m_items[i] == WIRE_CUBE) {
             glColor3f(1., 0., 0.);
-            glutWireCube(1.);
+			drawWireCube(1.);
             glColor3f(0., 1., 0.);
 
             glPushMatrix();
             glScalef(1., 1., 4.5);
             glTranslatef(0., 0., -.5);
-            glutWireCube(1.);
+			drawWireCube(1.);
             glPopMatrix();
 
             glColor3f(0., 0., 1.);
-            glutWireCube(3.);
+			drawWireCube(3.);
         } else if (m_items[i] == SOLID_CUBE) {
             glEnable(GL_LIGHTING);
-            glutSolidCube(2.);
-            glDisable(GL_LIGHTING);
-        } else if (m_items[i] == SOLID_TEAPOT) {
-            glEnable(GL_LIGHTING);
-            glPushMatrix();
-            glRotatef(90., 1., 0., 0.);
-            glutSolidTeapot(1.);
-            glPopMatrix();
+            drawSolidCube(2.);
             glDisable(GL_LIGHTING);
         }
     }
 }
 
+class Renderer : public GLFWRenderer {
+public:
+    Renderer(Tracker &tracker);
+    ~Renderer();
 
-class Renderer {
-    public:
-        Renderer(Tracker &tracker);
-        ~Renderer();
+    void init();
+    virtual void render();
 
-        void init();
-        void render();
-    private:
-        SDL_Surface *m_display;
-        Tracker &m_tracker;
+private:
+    Tracker &m_tracker;
 };
 
 Renderer::Renderer(Tracker &tracker)
-    : m_display(NULL),
-      m_tracker(tracker)
+    : GLFWRenderer()
+    , m_tracker(tracker)
 {
-    SDL_Init(SDL_INIT_VIDEO);
-    m_display = SDL_SetVideoMode(640, 480, 0, SDL_OPENGL);
 }
 
 Renderer::~Renderer()
 {
-    SDL_Quit();
 }
 
 void
 Renderer::init()
 {
-    char *argv[] = { NULL };
-    int argc = 0;
-    glutInit(&argc, argv);
     glClearColor(0., 0., 0., 1.);
 
     glViewport(0, 0, 640, 480);
@@ -323,7 +306,6 @@ void
 Renderer::render()
 {
     m_tracker.render();
-    SDL_GL_SwapBuffers();
 }
 
 class Main {
@@ -347,16 +329,10 @@ Main::exec()
     m_renderer.init();
     m_tracker.init();
 
-    SDL_Event e;
-    while (true) {
-        if (SDL_PollEvent(&e)) {
-            if (e.type == SDL_QUIT) {
-                break;
-            }
-        }
+    m_renderer.mainloop([&] () {
         m_tracker.update();
         m_renderer.render();
-    }
+    });
 
     return 0;
 }

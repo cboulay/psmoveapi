@@ -1,3 +1,4 @@
+#pragma once
 /**
  * PS Move API - An interface for the PS Move Motion Controller
  * Copyright (c) 2012 Benjamin Venditti <benjamin.venditti@gmail.com>
@@ -26,8 +27,6 @@
  * POSSIBILITY OF SUCH DAMAGE.
  **/
 
-#ifndef CAMERA_CONTROL_H_
-#define CAMERA_CONTROL_H_
 
 #ifdef __cplusplus
 extern "C" {
@@ -43,6 +42,12 @@ typedef struct _CameraControl CameraControl;
 CameraControl *
 camera_control_new(int cameraID);
 
+CameraControl *
+camera_control_new_with_settings(int cameraID, int width, int height, int framerate);
+
+int
+camera_control_count_connected();
+
 void
 camera_control_read_calibration(CameraControl* cc,
         char* intrinsicsFile, char* distortionFile);
@@ -52,8 +57,7 @@ camera_control_set_deinterlace(CameraControl *cc,
         enum PSMove_Bool enabled);
 
 IplImage *
-camera_control_query_frame(CameraControl* cc,
-        PSMove_timestamp *ts_grab, PSMove_timestamp *ts_retrieve);
+camera_control_query_frame(CameraControl* cc);
 
 void
 camera_control_delete(CameraControl* cc);
@@ -89,18 +93,20 @@ camera_control_set_parameters(CameraControl* cc,
         int autoE, int autoG, int autoWB,
         int exposure, int gain,
         int wbRed, int wbGreen, int wbBlue,
-        int contrast, int brightness);
+		int contrast, int brightness, enum PSMove_Bool h_flip);
+
+
+/* Opaque structure for storing system settings */
+
+struct CameraControlSystemSettings;
+
+struct CameraControlSystemSettings *
+camera_control_backup_system_settings(CameraControl* cc);
 
 void
-camera_control_backup_system_settings(CameraControl* cc,
-        const char* file);
-void
 camera_control_restore_system_settings(CameraControl* cc,
-        const char* file);
+        struct CameraControlSystemSettings *settings);
 
 #ifdef __cplusplus
 }
 #endif
-
-
-#endif /* CAMERA_CONTROL_H_ */

@@ -27,75 +27,16 @@
  * POSSIBILITY OF SUCH DAMAGE.
  **/
 
+#include "psmove_config.h"
 #include "camera_control.h"
 #include "psmove_tracker.h"
-
-#include "../external/iniparser/dictionary.h"
-#include "../external/iniparser/iniparser.h"
 
 #include "../psmove_private.h"
 
 #include <stdio.h>
+#include <stdint.h>
 
 #include "camera_control_private.h"
-
-#if defined(CAMERA_CONTROL_USE_PS3EYE_DRIVER)
-
-/**
- * Taken from the PS3EYEDriver OpenFrameworks example
- * written by Eugene Zatepyakin, MIT license
- **/
-
-static const int ITUR_BT_601_CY = 1220542;
-static const int ITUR_BT_601_CUB = 2116026;
-static const int ITUR_BT_601_CUG = -409993;
-static const int ITUR_BT_601_CVG = -852492;
-static const int ITUR_BT_601_CVR = 1673527;
-static const int ITUR_BT_601_SHIFT = 20;
-
-static void
-yuv422_to_bgr(const uint8_t *yuv_src, const int stride, uint8_t *dst, const int width, const int height)
-{
-    const int bIdx = 2;
-    const int uIdx = 0;
-    const int yIdx = 0;
-
-    const int uidx = 1 - yIdx + uIdx * 2;
-    const int vidx = (2 + uidx) % 4;
-    int j, i;
-
-#define _max(a, b) (((a) > (b)) ? (a) : (b))
-#define _saturate(v) (uint8_t)((uint32_t)(v) <= 0xff ? v : v > 0 ? 0xff : 0)
-
-    for (j = 0; j < height; j++, yuv_src += stride)
-    {
-        uint8_t* row = dst + (width * 3) * j;
-
-        for (i = 0; i < 2 * width; i += 4, row += 6)
-        {
-            int u = (int)(yuv_src[i + uidx]) - 128;
-            int v = (int)(yuv_src[i + vidx]) - 128;
-
-            int ruv = (1 << (ITUR_BT_601_SHIFT - 1)) + ITUR_BT_601_CVR * v;
-            int guv = (1 << (ITUR_BT_601_SHIFT - 1)) + ITUR_BT_601_CVG * v + ITUR_BT_601_CUG * u;
-            int buv = (1 << (ITUR_BT_601_SHIFT - 1)) + ITUR_BT_601_CUB * u;
-
-            int y00 = _max(0, (int)(yuv_src[i + yIdx]) - 16) * ITUR_BT_601_CY;
-            row[2-bIdx] = _saturate((y00 + buv) >> ITUR_BT_601_SHIFT);
-            row[1]      = _saturate((y00 + guv) >> ITUR_BT_601_SHIFT);
-            row[bIdx]   = _saturate((y00 + ruv) >> ITUR_BT_601_SHIFT);
-
-            int y01 = _max(0, (int)(yuv_src[i + yIdx + 2]) - 16) * ITUR_BT_601_CY;
-            row[5-bIdx] = _saturate((y01 + buv) >> ITUR_BT_601_SHIFT);
-            row[4]      = _saturate((y01 + guv) >> ITUR_BT_601_SHIFT);
-            row[3+bIdx] = _saturate((y01 + ruv) >> ITUR_BT_601_SHIFT);
-        }
-    }
-}
-#undef _max
-#undef _saturate
-
-#endif /* defined(CAMERA_CONTROL_USE_PS3EYE_DRIVER) */
 
 void
 get_metrics(int *width, int *height)
@@ -116,64 +57,75 @@ get_metrics(int *width, int *height)
 CameraControl *
 camera_control_new(int cameraID)
 {
+    return camera_control_new_with_settings(cameraID, 0, 0, 0);
+}
+
+CameraControl *
+camera_control_new_with_settings(int cameraID, int width, int height, int framerate)
+{
 	CameraControl* cc = (CameraControl*) calloc(1, sizeof(CameraControl));
 	cc->cameraID = cameraID;
 
-#if defined(CAMERA_CONTROL_USE_CL_DRIVER)
-	int w, h;
-	int cams = CLEyeGetCameraCount();
+    if (framerate <= 0) {
+        framerate = PSMOVE_TRACKER_DEFAULT_FPS;
+    }
 
-	if (cams <= cameraID) {
-            free(cc);
-            return NULL;
-	}
+#if defined(CAMERA_CONTROL_USE_PS3EYE_DRIVER)
+    ps3eye_init();
+    int cams = ps3eye_count_connected();
 
-	GUID cguid = CLEyeGetCameraUUID(cameraID);
-	cc->camera = CLEyeCreateCamera(cguid,
-                CLEYE_COLOR_PROCESSED, CLEYE_VGA, 60);
+    if (cams <= cameraID) {
+        free(cc);
+        return NULL;
+    }
 
-	CLEyeCameraGetFrameDimensions(cc->camera, &w, &h);
+    if (width <= 0 || height <= 0) {
+        get_metrics(&width, &height);
+    }
 
-	// Depending on color mode chosen, create the appropriate OpenCV image
-	cc->frame4ch = cvCreateImage(cvSize(w, h), IPL_DEPTH_8U, 4);
-	cc->frame3ch = cvCreateImage(cvSize(w, h), IPL_DEPTH_8U, 3);
+    cc->eye = ps3eye_open(cameraID, width, height, framerate, PS3EYE_FORMAT_BGR);
 
-	CLEyeCameraStart(cc->camera);
-#elif defined(CAMERA_CONTROL_USE_PS3EYE_DRIVER)
-        ps3eye_init();
-        int cams = ps3eye_count_connected();
+    if (cc->eye == NULL) {
+        free(cc);
+        return NULL;
+    }
 
-        if (cams <= cameraID) {
-            free(cc);
-            return NULL;
-        }
-
-        get_metrics(&(cc->width), &(cc->height));
-
-        cc->eye = ps3eye_open(cameraID, cc->width, cc->height, 60);
-
-        cc->framebgr = cvCreateImage(cvSize(cc->width, cc->height), IPL_DEPTH_8U, 3);
+    cc->framebgr = cvCreateImage(cvSize(width, height), IPL_DEPTH_8U, 3);
 #else
-        char *video = psmove_util_get_env_string(PSMOVE_TRACKER_FILENAME_ENV);
+    char *video = psmove_util_get_env_string(PSMOVE_TRACKER_FILENAME_ENV);
 
-        if (video) {
-            psmove_DEBUG("Using '%s' as video input.\n", video);
-            cc->capture = cvCaptureFromFile(video);
-            free(video);
-        } else {
-            cc->capture = cvCaptureFromCAM(cc->cameraID);
+    if (video) {
+        psmove_DEBUG("Using '%s' as video input.\n", video);
+        cc->capture = cvCaptureFromFile(video);
+        free(video);
+    } else {
+        cc->capture = cvCaptureFromCAM(cc->cameraID);
 
-            int width, height;
+        if (width <= 0 || height <= 0) {
             get_metrics(&width, &height);
-
-            cvSetCaptureProperty(cc->capture, CV_CAP_PROP_FRAME_WIDTH, width);
-            cvSetCaptureProperty(cc->capture, CV_CAP_PROP_FRAME_HEIGHT, height);
         }
-#endif
 
-        cc->deinterlace = PSMove_False;
+        cvSetCaptureProperty(cc->capture, CV_CAP_PROP_FRAME_WIDTH, width);
+        cvSetCaptureProperty(cc->capture, CV_CAP_PROP_FRAME_HEIGHT, height);
+    }
+#endif
+    cc->width = width;
+    cc->height = height;
+    cc->deinterlace = PSMove_False;
 
 	return cc;
+}
+
+int
+camera_control_count_connected()
+{
+#if defined(CAMERA_CONTROL_USE_PS3EYE_DRIVER)
+	ps3eye_init();
+	return ps3eye_count_connected();
+#else
+	// Don't know how to get number of connected cameras through opencv...
+	return -1;
+#endif
 }
 
 void
@@ -202,14 +154,11 @@ camera_control_read_calibration(CameraControl* cc,
     if (intrinsic && distortion) {
         if (!cc->frame3chUndistort) {
             cc->frame3chUndistort = cvCloneImage(
-                    camera_control_query_frame(cc, NULL, NULL));
+                    camera_control_query_frame(cc));
         }
 
-        int width, height;
-        get_metrics(&width, &height);
-
-        cc->mapx = cvCreateImage(cvSize(width, height), IPL_DEPTH_32F, 1);
-        cc->mapy = cvCreateImage(cvSize(width, height), IPL_DEPTH_32F, 1);
+		cc->mapx = cvCreateImage(cvSize(cc->width, cc->height), IPL_DEPTH_32F, 1);
+		cc->mapy = cvCreateImage(cvSize(cc->width, cc->height), IPL_DEPTH_32F, 1);
 
         cvInitUndistortMap(intrinsic, distortion, cc->mapx, cc->mapy);
 
@@ -220,43 +169,22 @@ camera_control_read_calibration(CameraControl* cc,
 }
 
 IplImage *
-camera_control_query_frame(CameraControl* cc,
-        PSMove_timestamp *ts_grab, PSMove_timestamp *ts_retrieve)
+camera_control_query_frame( CameraControl* cc)
 {
     IplImage* result;
 
-#if defined(CAMERA_CONTROL_USE_CL_DRIVER)
-    // assign buffer-pointer to address of buffer
-    cvGetRawData(cc->frame4ch, &cc->pCapBuffer, 0, 0);
-
-    CLEyeCameraGetFrame(cc->camera, cc->pCapBuffer, 2000);
-
-    // convert 4ch image to 3ch image
-    const int from_to[] = { 0, 0, 1, 1, 2, 2 };
-    const CvArr** src = (const CvArr**) &cc->frame4ch;
-    CvArr** dst = (CvArr**) &cc->frame3ch;
-    cvMixChannels(src, 1, dst, 1, from_to, 3);
-
-    result = cc->frame3ch;
-#elif defined(CAMERA_CONTROL_USE_PS3EYE_DRIVER)
-    int stride = 0;
-    unsigned char *pixels = ps3eye_grab_frame(cc->eye, &stride);
-
-    // Convert pixels from camera to BGR
+#if defined(CAMERA_CONTROL_USE_PS3EYE_DRIVER)
+    // Get raw data pointer
     unsigned char *cvpixels;
     cvGetRawData(cc->framebgr, &cvpixels, 0, 0);
-    yuv422_to_bgr(pixels, stride, cvpixels, cc->width, cc->height);
+
+	// Grab frame to buffer
+	ps3eye_grab_frame(cc->eye, cvpixels);
 
     result = cc->framebgr;
 #else
     cvGrabFrame(cc->capture);
-    if (ts_grab != NULL) {
-        *ts_grab = _psmove_timestamp();
-    }
     result = cvRetrieveFrame(cc->capture, 0);
-    if (ts_retrieve != NULL) {
-        *ts_retrieve = _psmove_timestamp();
-    }
 #endif
 
     if (cc->deinterlace == PSMove_True) {
@@ -310,15 +238,7 @@ camera_control_query_frame(CameraControl* cc,
 void
 camera_control_delete(CameraControl* cc)
 {
-#if defined(CAMERA_CONTROL_USE_CL_DRIVER)
-    if (cc->frame3ch != 0x0)
-        cvReleaseImage(&cc->frame3ch);
-
-    if (cc->frame4ch != 0x0)
-		cvReleaseImage(&cc->frame4ch);
-
-    CLEyeDestroyCamera(cc->camera);
-#elif defined(CAMERA_CONTROL_USE_PS3EYE_DRIVER)
+#if defined(CAMERA_CONTROL_USE_PS3EYE_DRIVER)
     cvReleaseImage(&cc->framebgr);
 
     ps3eye_close(cc->eye);

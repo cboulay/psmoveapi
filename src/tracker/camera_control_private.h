@@ -1,3 +1,5 @@
+#pragma once
+
 /**
  * PS Move API - An interface for the PS Move Motion Controller
  * Copyright (c) 2012 Thomas Perl <m@thp.io>
@@ -27,8 +29,6 @@
  * POSSIBILITY OF SUCH DAMAGE.
  **/
 
-#ifndef CAMERA_CONTROL_PRIV_H
-#define CAMERA_CONTROL_PRIV_H
 
 #include "opencv2/core/core_c.h"
 #include "opencv2/highgui/highgui_c.h"
@@ -38,31 +38,18 @@
 #    include <windows.h>
 #endif
 
-#if defined(CAMERA_CONTROL_USE_CL_DRIVER)
-#    include "../external/CLEye/CLEyeMulticam.h"
-#else
-#    define CL_DRIVER_REG_PATH "Software\\PS3EyeCamera\\Settings"
-#endif
+#define CL_DRIVER_REG_PATH "Software\\PS3EyeCamera\\Settings"
 
 #if defined(CAMERA_CONTROL_USE_PS3EYE_DRIVER)
-#    include "ps3eyedriver.h"
+#    include "ps3eye_capi.h"
 #endif
 
 struct _CameraControl {
 	int cameraID;
 	IplImage* frame3chUndistort;
 
-#if defined(CAMERA_CONTROL_USE_CL_DRIVER)
-	CLEyeCameraInstance camera;
-	IplImage* frame3ch;
-	IplImage* frame4ch;
-	PBYTE pCapBuffer;
-#endif
-
 #if defined(CAMERA_CONTROL_USE_PS3EYE_DRIVER)
         ps3eye_t *eye;
-        int width;
-        int height;
         IplImage *framebgr;
 #endif
 
@@ -71,10 +58,10 @@ struct _CameraControl {
 	IplImage* mapx;
 	IplImage* mapy;
 
+        int width;
+        int height;
         enum PSMove_Bool deinterlace;
 };
-
-#endif
 
 void
 get_metrics(int *width, int *height);

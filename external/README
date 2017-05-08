@@ -1,54 +1,9 @@
-
-CLEye
-=====
-
-Header for the CLEye Windows driver
-by Codelaboratories Software
-from http://codelaboratories.com/products/eye/sdk/
-
-Modified by Benjamin Venditti for interoperability with the Tracker
-
-
 hidapi
 ======
 
 HIDAPI
 by Alan Ott
 from http://www.signal11.us/oss/hidapi/
-
-
-mingw-w64-headers
-=================
-
-Headers and libraries for Bluetooth support on Windows
-by the MinGW-w64 project
-from http://mingw-w64.sourceforge.net/
-
-
-MadgwickAHRS, MahonyAHRS
-========================
-
-Open Source IMU and AHRS algorithms
-by Sebastian Madgwick
-from http://www.x-io.co.uk/node/8
-
-Modified by Thomas Perl for multi-controller tracking (quaternion state)
-
-
-iniparser
-=========
-
-Parser for ini files
-by Nicolas Devillard
-from http://ndevilla.free.fr/iniparser/
-
-
-TUIO_CPP
-========
-
-TUIO Reference Implementation
-by Martin Kaltenbrunner
-from http://www.tuio.org/?software
 
 
 glm
@@ -59,8 +14,8 @@ by G-Truc Creation
 from http://glm.g-truc.net/
 
 
-libusb-1.0.9
-============
+libusb-1.0
+==========
 
 A C library that gives applications easy access to USB devices
 by the libusb authors
@@ -73,3 +28,10 @@ PS3EYEDriver
 PSEye userspace driver based on libusb + the Linux driver
 by Eugene Zatepyakin, modified by Thomas Perl
 from https://github.com/thp/PS3EYEDriver
+
+
+glfw
+====
+
+GLFW; used for OpenGL in the examples.
+from http://www.glfw.org

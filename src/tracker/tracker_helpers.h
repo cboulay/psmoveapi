@@ -1,3 +1,4 @@
+#pragma once
 /**
  * PS Move API - An interface for the PS Move Motion Controller
  * Copyright (c) 2012 Benjamin Venditti <benjamin.venditti@gmail.com>
@@ -27,8 +28,6 @@
  * POSSIBILITY OF SUCH DAMAGE.
  **/
 
-#ifndef TRACKER_HELPERS_H
-#define TRACKER_HELPERS_H
 
 #include "opencv2/core/core_c.h"
 
@@ -45,6 +44,10 @@
                                ((a).x - (b).x) + \
                                ((a).y - (b).y) * \
                                ((a).y - (b).y))
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /**
  * Variance and average of an array of doubles
@@ -88,4 +91,6 @@ th_scalar_mul(CvScalar a, double b);
 CvScalar
 th_brg2hsv(CvScalar bgr);
 
-#endif // TRACKER_HELPERS_H
+#ifdef __cplusplus
+}
+#endif

@@ -1,0 +1,17 @@
+version: 1.0.{build}
+
+# AppVeyor clone is not recursive, so we need to to init submodules manually
+install:
+  - git submodule update --init --recursive
+
+environment:
+  BUILD_TYPE: windows-native-msvc
+
+build_script:
+- cmd: >-
+    bash -e -x scripts/build_package.sh
+
+artifacts:
+- path: 'upload\psmoveapi-*.zip'
+
+test: off

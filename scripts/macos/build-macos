@@ -1,0 +1,94 @@
+#!/bin/bash -x -e
+#
+# Script to build Mac OS X binary snapshots of PS Move API
+# Thomas Perl <m@thp.io>; 2012-09-28
+#
+
+# Determine PSMoveAPI root dir
+export PSMOVEAPI_CHECKOUT="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/../../"
+
+export OPENCV_CHECKOUT_DIR=$PSMOVEAPI_CHECKOUT/external/opencv
+export OPENCV_BUILD_DIR=$PSMOVEAPI_CHECKOUT/external/opencv/build
+export OPENCV_INSTALL_DIR=$OPENCV_CHECKOUT_DIR/build/install
+
+# For parallel builds
+MAKE_ARGS=-j4
+
+# Git revision identifier
+PSMOVEAPI_REVISION=$(git describe --tags)
+
+if [ ! -f $PSMOVEAPI_CHECKOUT/CMakeLists.txt ]; then
+    echo "ERROR: You have to run this script in the PS Move API source root."
+    exit 1
+fi
+
+# Build libusb-1.0 as universal static library
+# needed for the PS3EYEDriver to access the PSEye
+# otherwise we'd dynamically link against some the Homebrew libusb
+(
+    cd $PSMOVEAPI_CHECKOUT/external/libusb-1.0
+    export ARCHFLAGS='-arch x86_64'
+    export CFLAGS="$CFLAGS $ARCHFLAGS"
+    export CXXFLAGS="$CXXFLAGS $ARCHFLAGS"
+    ./autogen.sh
+    ./configure
+    make ${MAKE_ARGS}
+)
+
+cd $PSMOVEAPI_CHECKOUT
+
+# Build OpenCV
+if [ ! -d $OPENCV_INSTALL_DIR ]; then
+    cd external
+    if [ ! -d opencv ]; then
+		git clone --depth 1 --branch 3.1.0 git://github.com/Itseez/opencv.git
+    fi
+    cd opencv
+
+    # Patch for Mac OS X deprecation of QTKit & adoption of AVFoundation
+    git fetch https://github.com/opencv/opencv.git +pull/7266/head:pr7266
+    git checkout pr7266
+
+    rm -rf build
+    mkdir -p build
+    cd build
+    cmake -DBUILD_SHARED_LIBS=OFF \
+          -DBUILD_PERF_TESTS=OFF \
+          -DBUILD_TESTS=OFF \
+          -DBUILD_DOCS=OFF \
+          -DBUILD_FAT_JAVA_LIB=OFF \
+          -DBUILD_PACKAGE=OFF \
+          -DBUILD_opencv_apps=OFF \
+          -DBUILD_opencv_objdetect=OFF \
+          -DBUILD_opencv_photo=OFF \
+          -DBUILD_opencv_shape=OFF \
+          -DBUILD_opencv_stitching=OFF \
+          -DBUILD_opencv_superres=OFF \
+          -DBUILD_opencv_ts=OFF \
+          -DBUILD_opencv_video=OFF \
+          -DBUILD_opencv_videostab=OFF \
+          -DBUILD_opencv_world=OFF \
+          -DBUILD_opencv_java=OFF \
+          -DWITH_OPENEXR=OFF \
+          -DWITH_FFMPEG=OFF \
+          -DWITH_JASPER=OFF \
+          -DWITH_GSTREAMER=OFF \
+          -DWITH_GPHOTO2=OFF \
+          -DCMAKE_OSX_ARCHITECTURES="x86_64" \
+          -DCMAKE_INSTALL_PREFIX=$(pwd)/install ..
+    make ${MAKE_ARGS}
+    make install
+fi
+
+cd $PSMOVEAPI_CHECKOUT
+
+# Build PS Move API
+rm -rf build
+mkdir build
+cd build
+cmake -DPSMOVE_USE_PS3EYE_DRIVER=ON \
+      -DPSMOVE_BUILD_TRACKER=ON \
+      -DPSMOVE_BUILD_JAVA_BINDINGS=ON \
+      -DPSMOVE_BUILD_PROCESSING_BINDINGS=ON \
+      -DOpenCV_DIR=${OPENCV_BUILD_DIR} ..
+make ${MAKE_ARGS}

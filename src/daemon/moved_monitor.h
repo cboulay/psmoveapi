@@ -1,3 +1,4 @@
+#pragma once
 
  /**
  * PS Move API - An interface for the PS Move Motion Controller
@@ -28,8 +29,10 @@
  **/
 
 
-#ifndef MOVED_MONITOR_H
-#define MOVED_MONITOR_H
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /* For now, monitoring is only supported on Linux */
 #ifdef __linux
@@ -74,4 +77,6 @@ moved_monitor_free(moved_monitor *monitor);
 
 #endif /* __linux */
 
-#endif /* MOVED_MONITOR_H */
+#ifdef __cplusplus
+}
+#endif

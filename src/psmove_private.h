@@ -1,3 +1,4 @@
+#pragma once
 /**
  * PS Move API - An interface for the PS Move Motion Controller
  * Copyright (c) 2012 Thomas Perl <m@thp.io>
@@ -27,8 +28,6 @@
  * POSSIBILITY OF SUCH DAMAGE.
  **/
 
-#ifndef PSMOVE_PRIVATE_H
-#define PSMOVE_PRIVATE_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -39,7 +38,6 @@ extern "C" {
 #include <stdio.h>
 #include <wchar.h>
 #include <time.h>
-#include <pthread.h> /* for timespec on Windows */
 
     /**
      * PRIVATE DEFINITIONS FOR USE IN psmove.c AND psmove_*.c
@@ -74,13 +72,13 @@ extern "C" {
 #define psmove_CRITICAL(x) \
         psmove_PRINTF("PSMOVE CRITICAL", \
                 "Assertion fail in %s: %s\n", \
-                __func__, x)
+                __FUNCTION__, x)
 
 /* Macro: Deprecated functions */
 #define psmove_DEPRECATED(x) \
         psmove_PRINTF("PSMOVE DEPRECATED", \
                 "%s is deprecated: %s\n", \
-                __func__, x)
+                __FUNCTION__, x)
 
 /* Macros: Return immediately if an assertion fails + log */
 #define psmove_return_if_fail(expr) \
@@ -190,19 +188,6 @@ ADDAPI int
 ADDCALL _psmove_read_btaddrs(PSMove *move, PSMove_Data_BTAddr *host, PSMove_Data_BTAddr *controller);
 
 
-/* Performance measurement structures and functions */
-typedef struct timespec PSMove_timestamp;
-
-ADDAPI PSMove_timestamp
-ADDCALL _psmove_timestamp();
-
-ADDAPI PSMove_timestamp
-ADDCALL _psmove_timestamp_diff(PSMove_timestamp a, PSMove_timestamp b);
-
-ADDAPI double
-ADDCALL _psmove_timestamp_value(PSMove_timestamp ts);
-
-
 /* Misc utility functions */
 ADDAPI void
 ADDCALL _psmove_wait_for_button(PSMove *move, int button);
@@ -248,6 +233,4 @@ ADDCALL _psmove_get_auth_response(PSMove *move);
 
 #ifdef __cplusplus
 }
-#endif
-
 #endif

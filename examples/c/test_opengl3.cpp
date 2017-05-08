@@ -30,7 +30,6 @@
 #include <stdio.h>
 
 #include <time.h>
-#include <unistd.h>
 #include <assert.h>
 #include <math.h>
 #include <stdlib.h>
@@ -38,7 +37,6 @@
 #include <list>
 
 #include "psmove_examples_opengl.h"
-#include <SDL/SDL.h>
 
 #include "psmove.h"
 #include "psmove_tracker.h"
@@ -107,7 +105,7 @@ class Drum {
                 glColor3f(.5, 0., 0.);
             }
             glTranslatef(pos.x, pos.y, pos.z);
-            glutSolidSphere(radius, 10, 10);
+            drawSolidSphere(radius, 10, 10);
         }
 
         Vector3D pos;
@@ -267,17 +265,17 @@ Tracker::render()
         glLoadMatrixf(psmove_fusion_get_modelview_matrix(m_fusion, m_moves[i]));
 
         glColor3f(1., 0., 0.);
-        glutWireCube(1.);
+        drawWireCube(1.);
         glColor3f(0., 1., 0.);
 
         glPushMatrix();
         glScalef(1., 1., 4.5);
         glTranslatef(0., 0., -.5);
-        glutWireCube(1.);
+        drawWireCube(1.);
         glPopMatrix();
 
         glColor3f(0., 0., 1.);
-        glutWireCube(3.);
+        drawWireCube(3.);
     }
 
     glEnable(GL_LIGHTING);
@@ -294,71 +292,31 @@ Tracker::render()
 }
 
 
-class Renderer {
-    public:
-        Renderer(Tracker &tracker);
-        ~Renderer();
+class Renderer : public GLFWRenderer {
+public:
+    Renderer(Tracker &tracker);
+    ~Renderer();
 
-        void init();
-        void render();
+    void init();
+    void render();
 
-        SDL_Surface *m_display;
-        Tracker &m_tracker;
+private:
+    Tracker &m_tracker;
 };
 
-void
-play_audio(void *userdata, Uint8 *stream, int len)
-{
-    static unsigned long time = 0;
-    Renderer *renderer = (Renderer*)userdata;
-    float frequency = 0;
-
-    for (int i=0; i<renderer->m_tracker.m_drum_count; i++) {
-        Drum *drum = &(renderer->m_tracker.m_drums[i]);
-        if (drum->highlighted) {
-            frequency = 1. + 2. * i;
-        }
-    }
-
-    Uint16 *stream16 = (Uint16*)stream;
-    for (int i=0; i<len/2; i++) {
-        stream16[i] = 0x7FFF * sin(frequency*time*.01);
-        time++;
-    }
-}
-
 Renderer::Renderer(Tracker &tracker)
-    : m_display(NULL),
-      m_tracker(tracker)
+    : GLFWRenderer()
+    , m_tracker(tracker)
 {
-    SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO);
-
-    SDL_AudioSpec wanted;
-    wanted.freq = 44100;
-    wanted.format = AUDIO_U16;
-    wanted.channels = 1;
-    wanted.samples = 1024;
-    wanted.callback = play_audio;
-    wanted.userdata = this;
-    if (SDL_OpenAudio(&wanted, NULL) < 0) {
-        printf("Cannot open audio device\n");
-    }
-    SDL_PauseAudio(0);
-
-    m_display = SDL_SetVideoMode(640, 480, 0, SDL_OPENGL);
 }
 
 Renderer::~Renderer()
 {
-    SDL_Quit();
 }
 
 void
 Renderer::init()
 {
-    char *argv[] = { NULL };
-    int argc = 0;
-    glutInit(&argc, argv);
     glClearColor(0., 0., 0., 1.);
 
     glViewport(0, 0, 640, 480);
@@ -371,7 +329,6 @@ void
 Renderer::render()
 {
     m_tracker.render();
-    SDL_GL_SwapBuffers();
 }
 
 class Main {
@@ -395,16 +352,10 @@ Main::exec()
     m_renderer.init();
     m_tracker.init();
 
-    SDL_Event e;
-    while (true) {
-        if (SDL_PollEvent(&e)) {
-            if (e.type == SDL_QUIT) {
-                break;
-            }
-        }
+    m_renderer.mainloop([&] () {
         m_tracker.update();
         m_renderer.render();
-    }
+    });
 
     return 0;
 }

@@ -30,7 +30,6 @@
 #include <stdio.h>
 
 #include <time.h>
-#include <unistd.h>
 #include <assert.h>
 #include <math.h>
 #include <stdlib.h>
@@ -38,7 +37,6 @@
 #include <list>
 
 #include "psmove_examples_opengl.h"
-#include <SDL/SDL.h>
 
 #include "psmove.h"
 #include "psmove_tracker.h"
@@ -48,7 +46,6 @@ enum {
     NOTHING,
     WIRE_CUBE,
     SOLID_CUBE,
-    SOLID_TEAPOT,
     ITEM_MAX,
 };
 
@@ -180,14 +177,20 @@ void
 Tracker::update()
 {
     /* Garbage-collect particles */
-    std::list<Particle*>::reverse_iterator it;
-    for (it=m_particles.rbegin(); it != m_particles.rend(); ++it) {
-        Particle *particle = *it;
-        if (!particle->valid()) {
-            m_particles.remove(particle);
-            delete particle;
-        }
-    }
+	std::list<Particle*>::iterator i = m_particles.begin();
+	while (i != m_particles.end())
+	{
+		Particle *particle = *i;
+		if (!particle->valid())
+		{
+			i = m_particles.erase(i);
+			delete particle;
+		}
+		else
+		{
+			++i;
+		}
+	}
 
     for (int i=0; i<m_count; i++) {
         while (psmove_poll(m_moves[i]));
@@ -298,7 +301,7 @@ Tracker::render()
 
             glLightfv(GL_LIGHT0, GL_DIFFUSE, particle->color);
 
-            glutSolidCube(.5);
+            drawSolidCube(.5);
             glPopMatrix();
         }
         glDisable(GL_LIGHTING);
@@ -310,38 +313,29 @@ Tracker::render()
 
         if (m_items[i] == WIRE_CUBE) {
             glColor3f(1., 0., 0.);
-            glutWireCube(1.);
+            drawWireCube(1.);
             glColor3f(0., 1., 0.);
 
             glPushMatrix();
             glScalef(1., 1., 4.5);
             glTranslatef(0., 0., -.5);
-            glutWireCube(1.);
+            drawWireCube(1.);
             glPopMatrix();
 
             glColor3f(0., 0., 1.);
-            glutWireCube(3.);
+            drawWireCube(3.);
         } else if (m_items[i] == SOLID_CUBE) {
             glEnable(GL_LIGHTING);
             float diffuse[] = {.5, 0., 0., 1.};
             glLightfv(GL_LIGHT0, GL_DIFFUSE, diffuse);
-            glutSolidCube(2.);
-            glDisable(GL_LIGHTING);
-        } else if (m_items[i] == SOLID_TEAPOT) {
-            glEnable(GL_LIGHTING);
-            float diffuse[] = {0., .5, 0., 1.};
-            glLightfv(GL_LIGHT0, GL_DIFFUSE, diffuse);
-            glPushMatrix();
-            glRotatef(90., 1., 0., 0.);
-            glutSolidTeapot(1.);
-            glPopMatrix();
+            drawSolidCube(2.);
             glDisable(GL_LIGHTING);
         }
     }
 }
 
 
-class Renderer {
+class Renderer : public GLFWRenderer {
     public:
         Renderer(Tracker &tracker);
         ~Renderer();
@@ -349,29 +343,22 @@ class Renderer {
         void init();
         void render();
     private:
-        SDL_Surface *m_display;
-        Tracker &m_tracker;
+		Tracker &m_tracker;
 };
 
 Renderer::Renderer(Tracker &tracker)
-    : m_display(NULL),
-      m_tracker(tracker)
+    : GLFWRenderer()
+    , m_tracker(tracker)
 {
-    SDL_Init(SDL_INIT_VIDEO);
-    m_display = SDL_SetVideoMode(640, 480, 0, SDL_OPENGL);
 }
 
 Renderer::~Renderer()
 {
-    SDL_Quit();
 }
 
 void
 Renderer::init()
 {
-    char *argv[] = { NULL };
-    int argc = 0;
-    glutInit(&argc, argv);
     glClearColor(0., 0., 0., 1.);
 
     glViewport(0, 0, 640, 480);
@@ -384,7 +371,6 @@ void
 Renderer::render()
 {
     m_tracker.render();
-    SDL_GL_SwapBuffers();
 }
 
 class Main {
@@ -408,16 +394,10 @@ Main::exec()
     m_renderer.init();
     m_tracker.init();
 
-    SDL_Event e;
-    while (true) {
-        if (SDL_PollEvent(&e)) {
-            if (e.type == SDL_QUIT) {
-                break;
-            }
-        }
+    m_renderer.mainloop([&] () {
         m_tracker.update();
         m_renderer.render();
-    }
+    });
 
     return 0;
 }
